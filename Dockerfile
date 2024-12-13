@@ -54,6 +54,9 @@ COPY pyproject.toml poetry.lock* /app/
 RUN $CONDA_DIR/bin/conda run -n pyenv \
     poetry install --only main --no-interaction --no-ansi
 
+# Install git lfs
+RUN apt-get update && apt-get install -y git-lfs && git lfs install
+
 # Copiar todo o conteúdo do projeto
 COPY . /app
 

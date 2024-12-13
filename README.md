@@ -85,6 +85,14 @@ docker run --gpus all -d \
 
 Access the UI at `http://localhost:7860`.
 
+## Running on RunPod
+
+If you prefer to use [RunPod](https://runpod.io/), you can quickly deploy an instance based on this image by using the following template link:
+
+[Deploy on RunPod](https://runpod.io/console/deploy?template=t46lnd7p4b&ref=8t518hht)
+
+This link takes you to the RunPod console, allowing you to set up a machine directly with the provided image. Just configure your GPU, volume mounts, and environment variables as needed.
+
 ## Platform Notes
 
 - **Windows:**  

@@ -23,7 +23,6 @@ def generate_unique_filename(base_name):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"{base_name}_{timestamp}.toml"
 
-
 def create_dataset_config(dataset_path, num_repeats):
     """Generate dataset TOML configuration."""
     dataset_config = {
@@ -33,10 +32,12 @@ def create_dataset_config(dataset_path, num_repeats):
         "max_ar": 2.0,
         "num_ar_buckets": 7,
         "frame_buckets": [1, 33, 65],
-        "directory": {
-            "path": dataset_path,
-            "num_repeats": num_repeats
-        }
+        "directory": [
+            {
+                "path": dataset_path,
+                "num_repeats": num_repeats
+            }
+        ]
     }
     dataset_file = generate_unique_filename("dataset_auto")
     dataset_path_full = os.path.join(CONFIG_HISTORY_DIR, dataset_file)
