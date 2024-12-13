@@ -23,6 +23,7 @@ def generate_unique_filename(base_name):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"{base_name}_{timestamp}.toml"
 
+
 def create_dataset_config(dataset_path, num_repeats):
     """Generate dataset TOML configuration."""
     dataset_config = {
@@ -255,8 +256,13 @@ def build_interface():
         gr.Markdown("# LoRA Training Interface for Hunyuan Video")
 
         with gr.Row():
-            # Upload and dataset info
-            dataset_upload = gr.File(label="Upload Dataset Files", file_types=[".jpg", ".png", ".txt"], file_count="multiple", type="filepath")
+            dataset_upload = gr.File(
+                label="Upload Dataset Files",
+                file_types=[".jpg", ".png", ".txt"],
+                file_count="multiple",
+                type="filepath",
+                info="Upload your dataset (images/videos + optional .txt captions)."
+            )
             dataset_status = gr.Textbox(label="Upload Status", interactive=False)
             dataset_path_box = gr.Textbox(label="Dataset Path", interactive=False)
 
@@ -267,47 +273,122 @@ def build_interface():
             )
 
         with gr.Row():
-            # Download Dataset & Configs button moved above training parameters
-            download_dataset_button = gr.Button("Download Dataset & Configs")
+            download_dataset_button = gr.Button("Download Dataset & Configs", info="Download a ZIP containing dataset and generated config files.")
             dataset_file = gr.File(label="Download Dataset & Configs File")
-        
-        with gr.Row():
-            output_dir = gr.Textbox(label="Output Directory", value=OUTPUT_DIR)
 
         with gr.Row():
-            transformer_path = gr.Textbox(label="Transformer Path", value=f"{MODEL_DIR}/hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors")
-            vae_path = gr.Textbox(label="VAE Path", value=f"{MODEL_DIR}/hunyuan_video_vae_fp32.safetensors")
+            output_dir = gr.Textbox(
+                label="Output Directory",
+                value=OUTPUT_DIR,
+                info="Directory where training runs and results (checkpoints, etc.) are saved."
+            )
 
         with gr.Row():
-            llm_path = gr.Textbox(label="LLM Path", value=f"{MODEL_DIR}/llava-llama-3-8b-text-encoder-tokenizer")
-            clip_path = gr.Textbox(label="CLIP Path", value=f"{MODEL_DIR}/clip-vit-large-patch14")
+            transformer_path = gr.Textbox(
+                label="Transformer Path",
+                value=f"{MODEL_DIR}/hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors",
+                info="Path to the transformer model weights (Hunyuan Video)."
+            )
+            vae_path = gr.Textbox(
+                label="VAE Path",
+                value=f"{MODEL_DIR}/hunyuan_video_vae_fp32.safetensors",
+                info="Path to the VAE model file (fp32 recommended for best quality)."
+            )
 
         with gr.Row():
-            epochs = gr.Number(label="Epochs", value=1000)
-            batch_size = gr.Number(label="Batch Size", value=1)
-            lr = gr.Number(label="Learning Rate", value=2e-5, step=0.0001)
+            llm_path = gr.Textbox(
+                label="LLM Path",
+                value=f"{MODEL_DIR}/llava-llama-3-8b-text-encoder-tokenizer",
+                info="Path to LLM tokenizer and text encoder."
+            )
+            clip_path = gr.Textbox(
+                label="CLIP Path",
+                value=f"{MODEL_DIR}/clip-vit-large-patch14",
+                info="Path to CLIP model directory. Ensure it's a folder with the model files, not just one file."
+            )
 
         with gr.Row():
-            save_every = gr.Number(label="Save Every N Epochs", value=2)
-            eval_every = gr.Number(label="Evaluate Every N Epochs", value=1)
+            epochs = gr.Number(
+                label="Epochs",
+                value=1000,
+                info="Total number of epochs to train. Set high; you can stop early as desired."
+            )
+            batch_size = gr.Number(
+                label="Batch Size",
+                value=1,
+                info="Batch size per GPU for a single forward/backward pass (micro_batch_size_per_gpu)."
+            )
+            lr = gr.Number(
+                label="Learning Rate",
+                value=2e-5,
+                step=0.0001,
+                info="Learning rate for the optimizer (e.g., 2e-5)."
+            )
 
         with gr.Row():
-            rank = gr.Number(label="LoRA Rank", value=32)
-            dtype = gr.Dropdown(label="LoRA Dtype", choices=['float32', 'float16', 'bfloat16', 'float8'], value="bfloat16")
+            save_every = gr.Number(
+                label="Save Every N Epochs",
+                value=2,
+                info="Frequency (in epochs) to save model checkpoints."
+            )
+            eval_every = gr.Number(
+                label="Evaluate Every N Epochs",
+                value=1,
+                info="Frequency (in epochs) to run evaluation. Usually set to 1."
+            )
 
         with gr.Row():
-            gradient_accumulation_steps = gr.Number(label="Gradient Accumulation Steps", value=4)
-            num_repeats = gr.Number(label="Dataset Num Repeats", value=10)
+            rank = gr.Number(
+                label="LoRA Rank",
+                value=32,
+                info="Rank for LoRA adapter. Controls complexity of LoRA modules."
+            )
+            dtype = gr.Dropdown(
+                label="LoRA Dtype",
+                choices=['float32', 'float16', 'bfloat16', 'float8'],
+                value="bfloat16",
+                info="Data type for LoRA training weights. bfloat16 is a good default."
+            )
 
         with gr.Row():
-            optimizer_type = gr.Textbox(label="Optimizer Type", value="adamw_optimi")
-            betas = gr.Textbox(label="Betas", value="[0.9, 0.99]")
-            weight_decay = gr.Number(label="Weight Decay", value=0.01, step=0.0001)
-            eps = gr.Number(label="Epsilon", value=1e-8, step=0.0000001)
+            gradient_accumulation_steps = gr.Number(
+                label="Gradient Accumulation Steps",
+                value=4,
+                info="Number of micro-batches to accumulate before an optimizer step. Useful if pipeline parallelism > 1."
+            )
+            num_repeats = gr.Number(
+                label="Dataset Num Repeats",
+                value=10,
+                info="How many times to 'duplicate' the dataset, increasing effective dataset size."
+            )
+
+        with gr.Row():
+            optimizer_type = gr.Textbox(
+                label="Optimizer Type",
+                value="adamw_optimi",
+                info="Optimizer type. 'adamw_optimi' is a stable default using Kahan summation."
+            )
+            betas = gr.Textbox(
+                label="Betas",
+                value="[0.9, 0.99]",
+                info="Betas for AdamW optimizer."
+            )
+            weight_decay = gr.Number(
+                label="Weight Decay",
+                value=0.01,
+                step=0.0001,
+                info="Weight decay for regularization."
+            )
+            eps = gr.Number(
+                label="Epsilon",
+                value=1e-8,
+                step=0.0000001,
+                info="Epsilon for optimizer, improves numerical stability."
+            )
 
         is_training = gr.State(False)
-        train_button = gr.Button("Start Training")
-        output = gr.Textbox(label="Output Logs", lines=40)
+        train_button = gr.Button("Start Training", info="Start or Stop the training process.")
+        output = gr.Textbox(label="Output Logs", lines=40, info="Training logs and progress updates.")
 
         train_button.click(
             toggle_training,
@@ -319,9 +400,8 @@ def build_interface():
             outputs=[output, is_training, train_button]
         )
 
-        # Button to download output
         with gr.Row():
-            download_output_button = gr.Button("Download Output")
+            download_output_button = gr.Button("Download Output", info="Download a ZIP of the output directory (checkpoints, logs, etc.).")
             output_file = gr.File(label="Download Output File")
 
         download_output_button.click(
@@ -330,7 +410,6 @@ def build_interface():
             outputs=output_file
         )
 
-        # Download dataset & configs (now generates config if needed)
         download_dataset_button.click(
             download_dataset_action,
             inputs=[dataset_path_box, num_repeats],
