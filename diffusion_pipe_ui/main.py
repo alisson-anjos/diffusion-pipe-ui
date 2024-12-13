@@ -7,6 +7,7 @@ from datetime import datetime
 import threading
 from PIL import Image, ImageDraw, ImageFont
 import zipfile
+import signal
 
 MODEL_DIR = os.getenv("MODEL_DIR", "/models")
 BASE_DATASET_DIR = "/datasets"
@@ -18,11 +19,9 @@ os.makedirs(BASE_DATASET_DIR, exist_ok=True)
 training_process = None
 training_lock = threading.Lock()
 
-
 def generate_unique_filename(base_name):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"{base_name}_{timestamp}.toml"
-
 
 def create_dataset_config(dataset_path, num_repeats):
     """Generate dataset TOML configuration."""
@@ -45,7 +44,6 @@ def create_dataset_config(dataset_path, num_repeats):
     with open(dataset_path_full, "w") as f:
         toml.dump(dataset_config, f)
     return dataset_path_full
-
 
 def create_training_config(output_dir, dataset_path, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
                            transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
@@ -100,7 +98,6 @@ def create_training_config(output_dir, dataset_path, epochs, batch_size, lr, sav
         toml.dump(training_config, f)
     return training_path_full
 
-
 def train_lora(dataset_path, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
                transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
                gradient_accumulation_steps, num_repeats):
@@ -130,7 +127,14 @@ def train_lora(dataset_path, output_dir, epochs, batch_size, lr, save_every, eva
             f"train.py --deepspeed --config {training_config_path}'"
         )
 
-        training_process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        training_process = subprocess.Popen(
+            command,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            preexec_fn=os.setsid
+        )
 
     logs = ""
     try:
@@ -145,19 +149,16 @@ def train_lora(dataset_path, output_dir, epochs, batch_size, lr, save_every, eva
         with training_lock:
             training_process = None
 
-
 def stop_training():
-    """Stop the training process immediately."""
+    """Stop the training process (and subprocesses) immediately."""
     global training_process
-
     with training_lock:
         if training_process is not None:
-            # Use kill() for immediate stop
-            training_process.kill()
+            pgid = os.getpgid(training_process.pid)
+            os.killpg(pgid, signal.SIGKILL)
             training_process = None
-            return "Training process killed immediately."
+            return "Training process (and subprocesses) killed immediately."
         return "No training process is running."
-
 
 def upload_dataset(files):
     """Handle uploaded dataset files and store them in a unique directory."""
@@ -172,14 +173,12 @@ def upload_dataset(files):
         uploaded_files.append(dest_path)
     return dataset_dir, f"Dataset uploaded to {dataset_dir}: {', '.join(uploaded_files)}"
 
-
 def _train_generator_wrapper(generator, initial_logs):
     """Wrap the train_lora generator to keep track of the logs so we can add final message."""
     all_logs = initial_logs
     for chunk in generator:
         all_logs = chunk
         yield all_logs, True, gr.update()
-
 
 def toggle_training(is_training, dataset_path, output_dir, epochs, batch_size, lr, save_every, eval_every,
                     rank, dtype, transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas,
@@ -201,7 +200,6 @@ def toggle_training(is_training, dataset_path, output_dir, epochs, batch_size, l
         all_logs += "\nTraining finished."
         yield all_logs, False, gr.update(value="Start Training")
 
-
 def download_output_zip():
     """Create a zip file from OUTPUT_DIR and return its path."""
     zip_path = "/tmp/output.zip"
@@ -215,14 +213,12 @@ def download_output_zip():
                 zf.write(filepath, arcname)
     return zip_path
 
-
 def download_dataset_config_zip(dataset_dir):
     """Create a zip file containing the dataset directory and the config history."""
     zip_path = "/tmp/dataset_configs.zip"
     if os.path.exists(zip_path):
         os.remove(zip_path)
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-        # Add dataset directory
         if dataset_dir and os.path.exists(dataset_dir):
             for root, dirs, files in os.walk(dataset_dir):
                 for file in files:
@@ -230,7 +226,6 @@ def download_dataset_config_zip(dataset_dir):
                     arcname = os.path.relpath(filepath, os.path.dirname(dataset_dir))
                     zf.write(filepath, arcname)
 
-        # Add config history
         for root, dirs, files in os.walk(CONFIG_HISTORY_DIR):
             for file in files:
                 filepath = os.path.join(root, file)
@@ -238,19 +233,13 @@ def download_dataset_config_zip(dataset_dir):
                 zf.write(filepath, arcname)
     return zip_path
 
-
 def download_dataset_action(dataset_dir, num_repeats):
-    # If dataset_dir is not set or doesn't exist, return None
     if not dataset_dir or not os.path.exists(dataset_dir):
         return None
-
-    # Create a fresh dataset config to ensure we have config ready
     if not num_repeats:
-        num_repeats = 10  # default if none provided
+        num_repeats = 10
     create_dataset_config(dataset_dir, num_repeats)
-
     return download_dataset_config_zip(dataset_dir)
-
 
 def build_interface():
     with gr.Blocks() as demo:
@@ -258,7 +247,6 @@ def build_interface():
 
         gr.Markdown("Upload your dataset files (images and .txt captions) below.")
         with gr.Row():
-            # Removed info from gr.File since it's not supported
             dataset_upload = gr.File(label="Upload Dataset Files", file_types=[".jpg", ".png", ".txt"], file_count="multiple", type="filepath")
             dataset_status = gr.Textbox(label="Upload Status", interactive=False)
             dataset_path_box = gr.Textbox(label="Dataset Path", interactive=False)
@@ -274,39 +262,58 @@ def build_interface():
             download_dataset_button = gr.Button("Download Dataset & Configs")
             dataset_file = gr.File(label="Download Dataset & Configs File")
 
-        with gr.Row():
-            output_dir = gr.Textbox(label="Output Directory", value=OUTPUT_DIR)
+        output_dir = gr.Textbox(
+            label="Output Directory",
+            value=OUTPUT_DIR,
+            info="Directory where training runs and results (checkpoints, etc.) are saved."
+        )
 
         with gr.Row():
-            transformer_path = gr.Textbox(label="Transformer Path", value=f"{MODEL_DIR}/hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors")
-            vae_path = gr.Textbox(label="VAE Path", value=f"{MODEL_DIR}/hunyuan_video_vae_fp32.safetensors")
+            transformer_path = gr.Textbox(
+                label="Transformer Path",
+                value=f"{MODEL_DIR}/hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors",
+                info="Path to the transformer model weights (Hunyuan Video)."
+            )
+            vae_path = gr.Textbox(
+                label="VAE Path",
+                value=f"{MODEL_DIR}/hunyuan_video_vae_fp32.safetensors",
+                info="Path to the VAE model file (fp32 recommended for best quality)."
+            )
 
         with gr.Row():
-            llm_path = gr.Textbox(label="LLM Path", value=f"{MODEL_DIR}/llava-llama-3-8b-text-encoder-tokenizer")
-            clip_path = gr.Textbox(label="CLIP Path", value=f"{MODEL_DIR}/clip-vit-large-patch14")
+            llm_path = gr.Textbox(
+                label="LLM Path",
+                value=f"{MODEL_DIR}/llava-llama-3-8b-text-encoder-tokenizer",
+                info="Path to LLM tokenizer and text encoder."
+            )
+            clip_path = gr.Textbox(
+                label="CLIP Path",
+                value=f"{MODEL_DIR}/clip-vit-large-patch14",
+                info="Path to the CLIP model directory. Ensure it's a folder with the model files."
+            )
 
         with gr.Row():
-            epochs = gr.Number(label="Epochs", value=1000)
-            batch_size = gr.Number(label="Batch Size", value=1)
-            lr = gr.Number(label="Learning Rate", value=2e-5, step=0.0001)
+            epochs = gr.Number(label="Epochs", value=1000, info="Total number of epochs to train. Set high; you can stop early if desired.")
+            batch_size = gr.Number(label="Batch Size", value=1, info="Batch size per GPU for a single forward/backward pass.")
+            lr = gr.Number(label="Learning Rate", value=2e-5, step=0.0001, info="Learning rate for the optimizer (e.g., 2e-5).")
 
         with gr.Row():
-            save_every = gr.Number(label="Save Every N Epochs", value=2)
-            eval_every = gr.Number(label="Evaluate Every N Epochs", value=1)
+            save_every = gr.Number(label="Save Every N Epochs", value=2, info="Frequency (in epochs) to save model checkpoints.")
+            eval_every = gr.Number(label="Evaluate Every N Epochs", value=1, info="Frequency (in epochs) to run evaluation.")
 
         with gr.Row():
-            rank = gr.Number(label="LoRA Rank", value=32)
+            rank = gr.Number(label="LoRA Rank", value=32, info="Rank for LoRA adapter. Controls complexity of LoRA modules.")
             dtype = gr.Dropdown(label="LoRA Dtype", choices=['float32', 'float16', 'bfloat16', 'float8'], value="bfloat16")
 
         with gr.Row():
-            gradient_accumulation_steps = gr.Number(label="Gradient Accumulation Steps", value=4)
-            num_repeats = gr.Number(label="Dataset Num Repeats", value=10)
+            gradient_accumulation_steps = gr.Number(label="Gradient Accumulation Steps", value=4, info="Number of micro-batches to accumulate before an optimizer step.")
+            num_repeats = gr.Number(label="Dataset Num Repeats", value=10, info="How many times to 'duplicate' the dataset, increasing effective dataset size.")
 
         with gr.Row():
-            optimizer_type = gr.Textbox(label="Optimizer Type", value="adamw_optimi")
-            betas = gr.Textbox(label="Betas", value="[0.9, 0.99]")
-            weight_decay = gr.Number(label="Weight Decay", value=0.01, step=0.0001)
-            eps = gr.Number(label="Epsilon", value=1e-8, step=0.0000001)
+            optimizer_type = gr.Textbox(label="Optimizer Type", value="adamw_optimi", info="Optimizer type. 'adamw_optimi' is a stable default.")
+            betas = gr.Textbox(label="Betas", value="[0.9, 0.99]", info="Betas for the optimizer.")
+            weight_decay = gr.Number(label="Weight Decay", value=0.01, step=0.0001, info="Weight decay for regularization.")
+            eps = gr.Number(label="Epsilon", value=1e-8, step=0.0000001, info="Epsilon for the optimizer, improves numerical stability.")
 
         is_training = gr.State(False)
         train_button = gr.Button("Start Training")
@@ -340,7 +347,6 @@ def build_interface():
         )
 
     return demo
-
 
 if __name__ == "__main__":
     demo = build_interface()
