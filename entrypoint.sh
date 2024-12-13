@@ -55,6 +55,11 @@ if [ ! -f "$INIT_MARKER" ]; then
             curl -L -o "${MODEL_DIR}/hunyuan_video_vae_fp32.safetensors" "https://huggingface.co/Kijai/HunyuanVideo_comfy/resolve/main/hunyuan_video_vae_fp32.safetensors?download=true"
         fi
 
+        # Download hunyuan_video_vae_fp16 model
+        if [ ! -f "${MODEL_DIR}/hunyuan_video_vae_fp16.safetensors" ]; then
+            curl -L -o "${MODEL_DIR}/hunyuan_video_vae_fp16.safetensors" "https://huggingface.co/Kijai/HunyuanVideo_comfy/resolve/main/hunyuan_video_vae_fp16.safetensors?download=true"
+        fi
+
         # Clone the entire CLIP repo
         if [ ! -d "${MODEL_DIR}/clip-vit-large-patch14" ]; then
             git clone https://huggingface.co/openai/clip-vit-large-patch14 "${MODEL_DIR}/clip-vit-large-patch14"
