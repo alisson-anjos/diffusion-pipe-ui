@@ -6,11 +6,9 @@ DOWNLOAD_MODELS=${DOWNLOAD_MODELS:-"true"}  # Default if not set
 
 echo "DOWNLOAD_MODELS is: $DOWNLOAD_MODELS"
 
-# Check if the marker file exists
 if [ ! -f "$INIT_MARKER" ]; then
     echo "First-time initialization..."
     
-    # Perform initialization tasks here
     source /opt/conda/etc/profile.d/conda.sh
     conda activate pyenv
 
@@ -18,7 +16,7 @@ if [ ! -f "$INIT_MARKER" ]; then
     REPO_BRANCH=${REPO_BRANCH:-"main"}
     REPO_DIR=${REPO_DIR:-"/diffusion-pipe"}
 
-    # Clone repository with submodules if not already cloned
+    # Clone repository if not present
     if [ ! -d "$REPO_DIR/.git" ]; then
         echo "Cloning repository $REPO_URL with submodules..."
         git clone --recurse-submodules --branch $REPO_BRANCH $REPO_URL $REPO_DIR
@@ -57,9 +55,12 @@ if [ ! -f "$INIT_MARKER" ]; then
             curl -L -o "${MODEL_DIR}/hunyuan_video_vae_fp32.safetensors" "https://huggingface.co/Kijai/HunyuanVideo_comfy/resolve/main/hunyuan_video_vae_fp32.safetensors?download=true"
         fi
 
-        # Download clip-vit-large-patch14 model
-        if [ ! -f "${MODEL_DIR}/clip-vit-large-patch14.safetensors" ]; then
-            curl -L -o "${MODEL_DIR}/clip-vit-large-patch14.safetensors" "https://huggingface.co/openai/clip-vit-large-patch14/resolve/main/model.safetensors?download=true"
+        # Clone the entire CLIP repo
+        if [ ! -d "${MODEL_DIR}/clip-vit-large-patch14" ]; then
+            git clone https://huggingface.co/openai/clip-vit-large-patch14 "${MODEL_DIR}/clip-vit-large-patch14"
+            cd "${MODEL_DIR}/clip-vit-large-patch14"
+            git lfs pull
+            cd -
         fi
     else
         echo "DOWNLOAD_MODELS is false, skipping model downloads."
@@ -72,5 +73,4 @@ else
     echo "Container already initialized. Skipping first-time setup."
 fi
 
-# Start the Gradio interface
 exec python /app/diffusion_pipe_ui/main.py

@@ -275,7 +275,7 @@ def build_interface():
 
         with gr.Row():
             transformer_path = gr.Textbox(label="Transformer Path", value=f"{MODEL_DIR}/hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors")
-            vae_path = gr.Textbox(label="VAE Path", value=f"{MODEL_DIR}/hunyuan_video_vae_bf16.safetensors")
+            vae_path = gr.Textbox(label="VAE Path", value=f"{MODEL_DIR}/hunyuan_video_vae_fp32.safetensors")
 
         with gr.Row():
             llm_path = gr.Textbox(label="LLM Path", value=f"{MODEL_DIR}/llava-llama-3-8b-text-encoder-tokenizer")

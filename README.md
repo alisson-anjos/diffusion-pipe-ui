@@ -1,13 +1,15 @@
 # Diffusion-Pipe-UI
 
-This repository provides a LoRA Training Interface for the Hunyuan Video model using Gradio. The Docker image includes all necessary dependencies and can optionally download the required models on startup.
+This repository provides a LoRA Training Interface for the Hunyuan Video model using [Gradio](https://gradio.app/). The UI was initially created with the assistance of ChatGPT and may contain various issues or rough edges. Contributions, bug reports, and improvements are welcome!
+
+The core training logic is based on the [diffusion-pipe](https://github.com/tdrussell/diffusion-pipe) project, which provides the underlying functionality and scripts.
 
 ## Features
 
-- Web UI (Gradio) for easy configuration and execution of LoRA training
-- Optional NVIDIA GPU support for accelerated training
-- Ability to map model and output directories to the host machine for persistence
-- Optional automatic model download on the first run
+- Web UI (Gradio) for configuring and executing LoRA training.
+- Optional NVIDIA GPU support for accelerated training.
+- Ability to map model and output directories from the host system into the container.
+- Optional automatic download of required models upon first initialization.
 
 ## Prerequisites
 
@@ -18,7 +20,7 @@ This repository provides a LoRA Training Interface for the Hunyuan Video model u
 - **GPU Support (optional):**  
   To utilize GPU acceleration (NVIDIA):
   - **Linux:** Install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) and ensure your NVIDIA drivers are set up.
-  - **Windows/macOS:** Check the respective Docker and NVIDIA documentation for GPU passthrough (e.g., WSL2 on Windows). If you cannot use GPU, simply run the container without `--gpus all`.
+  - **Windows/macOS:** Check respective Docker and NVIDIA documentation for GPU passthrough (e.g., WSL2 on Windows). If GPU support is not available, you can run the container without `--gpus all`.
 
 ## How to Run
 
@@ -115,3 +117,11 @@ You can upload datasets, configure training parameters, start training, and down
 - `-d`: Start in detached mode (runs in the background).
 
 Use these options to tailor the setup to your environment and requirements.
+
+## Contributions
+
+The UI, initially created with ChatGPT's assistance, is not perfect and may contain various errors or rough parts. Contributions and improvements are welcome! If you encounter issues, feel free to open an issue or submit a pull request.
+
+## References
+
+- [diffusion-pipe](https://github.com/tdrussell/diffusion-pipe): The core repository providing the underlying training logic and scripts used by this UI.
