@@ -147,14 +147,15 @@ def train_lora(dataset_path, output_dir, epochs, batch_size, lr, save_every, eva
 
 
 def stop_training():
-    """Stop the training process."""
+    """Stop the training process immediately."""
     global training_process
 
     with training_lock:
         if training_process is not None:
-            training_process.terminate()
+            # For an immediate stop, use kill() instead of terminate().
+            training_process.kill()
             training_process = None
-            return "Training process terminated."
+            return "Training process killed immediately."
         return "No training process is running."
 
 
