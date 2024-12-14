@@ -27,8 +27,8 @@ os.makedirs(CONFIG_HISTORY_DIR, exist_ok=True)
 os.makedirs(BASE_DATASET_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Maximum number of images to display in the gallery
-MAX_IMAGES = 50
+# Maximum number of media to display in the gallery
+MAX_MEDIA = 50
 
 # -----------------------------
 # Training Process Management
@@ -55,15 +55,15 @@ def generate_unique_filename(base_name):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"{base_name}_{timestamp}.toml"
 
-def create_dataset_config(dataset_path, num_repeats, resolutions):
+def create_dataset_config(dataset_path, num_repeats, resolutions, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets):
     """Create and save the dataset configuration in TOML format."""
     dataset_config = {
         "resolutions": resolutions,  # Uses the provided list of resolutions
-        "enable_ar_bucket": True,
-        "min_ar": 0.5,
-        "max_ar": 2.0,
-        "num_ar_buckets": 7,
-        "frame_buckets": [1, 33, 65],
+        "enable_ar_bucket": enable_ar_bucket,
+        "min_ar": min_ar,
+        "max_ar": max_ar,
+        "num_ar_buckets": num_ar_buckets,
+        "frame_buckets": frame_buckets,  # Utiliza os frame_buckets fornecidos
         "directory": [
             {
                 "path": dataset_path,
@@ -79,7 +79,10 @@ def create_dataset_config(dataset_path, num_repeats, resolutions):
 
 def create_training_config(output_dir, dataset_path, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
                            transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
-                           gradient_accumulation_steps):
+                           gradient_accumulation_steps, gradient_clipping, warmup_steps, eval_before_first_step,
+                           eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes,
+                           activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
+                           video_clip_mode):
     """Create and save the training configuration in TOML format."""
     training_config = {
         "output_dir": output_dir,
@@ -87,20 +90,20 @@ def create_training_config(output_dir, dataset_path, epochs, batch_size, lr, sav
         "epochs": epochs,
         "micro_batch_size_per_gpu": batch_size,
         "gradient_accumulation_steps": gradient_accumulation_steps,
-        "gradient_clipping": 1.0,
-        "warmup_steps": 100,
+        "gradient_clipping": gradient_clipping,
+        "warmup_steps": warmup_steps,
         "eval_every_n_epochs": eval_every,
-        "eval_before_first_step": True,
-        "eval_micro_batch_size_per_gpu": 1,
-        "eval_gradient_accumulation_steps": 1,
+        "eval_before_first_step": eval_before_first_step,
+        "eval_micro_batch_size_per_gpu": eval_micro_batch_size_per_gpu,
+        "eval_gradient_accumulation_steps": eval_gradient_accumulation_steps,
         "save_every_n_epochs": save_every,
-        "checkpoint_every_n_minutes": 120,
-        "activation_checkpointing": True,
-        "partition_method": "parameters",
-        "save_dtype": "bfloat16",
-        "caching_batch_size": 1,
-        "steps_per_print": 1,
-        "video_clip_mode": "single_middle",
+        "checkpoint_every_n_minutes": checkpoint_every_n_minutes,
+        "activation_checkpointing": activation_checkpointing,
+        "partition_method": partition_method,
+        "save_dtype": save_dtype,
+        "caching_batch_size": caching_batch_size,
+        "steps_per_print": steps_per_print,
+        "video_clip_mode": video_clip_mode,
         "model": {
             "type": "hunyuan-video",
             "transformer_path": transformer_path,
@@ -154,7 +157,10 @@ def stop_training():
 
 def train_lora(dataset_path, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
                transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
-               gradient_accumulation_steps, num_repeats, resolutions):
+               gradient_accumulation_steps, num_repeats, resolutions, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets,
+               gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
+               checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
+               video_clip_mode):
     """Run the training command and stream logs."""
     global training_process
     with training_lock:
@@ -163,11 +169,47 @@ def train_lora(dataset_path, output_dir, epochs, batch_size, lr, save_every, eva
             return
 
         # Create configurations
-        dataset_config_path = create_dataset_config(dataset_path, num_repeats, resolutions)
+        dataset_config_path = create_dataset_config(
+            dataset_path, 
+            num_repeats, 
+            resolutions, 
+            enable_ar_bucket, 
+            min_ar, 
+            max_ar, 
+            num_ar_buckets, 
+            frame_buckets
+        )
         training_config_path = create_training_config(
-            output_dir, dataset_config_path, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
-            transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
-            gradient_accumulation_steps
+            output_dir, 
+            dataset_config_path, 
+            epochs, 
+            batch_size, 
+            lr, 
+            save_every, 
+            eval_every, 
+            rank, 
+            dtype,
+            transformer_path, 
+            vae_path, 
+            llm_path, 
+            clip_path, 
+            optimizer_type, 
+            betas, 
+            weight_decay, 
+            eps,
+            gradient_accumulation_steps,
+            gradient_clipping,
+            warmup_steps,
+            eval_before_first_step,
+            eval_micro_batch_size_per_gpu,
+            eval_gradient_accumulation_steps,
+            checkpoint_every_n_minutes,
+            activation_checkpointing,
+            partition_method,
+            save_dtype,
+            caching_batch_size,
+            steps_per_print,
+            video_clip_mode
         )
 
         # Training command (replace with the actual command)
@@ -195,13 +237,13 @@ def train_lora(dataset_path, output_dir, epochs, batch_size, lr, save_every, eva
     # Stream the logs
     try:
         while True:
-            output = training_process.stdout.readline()
-            error = training_process.stderr.readline()
-            if output:
-                yield output.strip()
-            if error:
-                yield error.strip()
-            if output == "" and error == "" and training_process.poll() is not None:
+            output_line = training_process.stdout.readline()
+            error_line = training_process.stderr.readline()
+            if output_line:
+                yield output_line.strip()
+            if error_line:
+                yield error_line.strip()
+            if output_line == "" and error_line == "" and training_process.poll() is not None:
                 break
     except Exception as e:
         yield f"Error during training: {str(e)}"
@@ -238,25 +280,32 @@ def upload_dataset(files):
                 uploaded_files.append(f"{filename} (invalid ZIP)")
                 continue
         else:
-            # If it's not a ZIP, copy the file directly
-            shutil.copy(file_path, dest_path)
-            uploaded_files.append(filename)
+            # Check if the file is a video and ensure it's .mp4
+            if filename.lower().endswith(('.mp4', '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.txt')):
+                shutil.copy(file_path, dest_path)
+                uploaded_files.append(filename)
+            else:
+                uploaded_files.append(f"{filename} (unsupported format)")
+                continue
 
     return dataset_dir, f"Dataset uploaded to {dataset_dir}: {', '.join(uploaded_files)}"
 
-def show_images(dataset_dir):
-    """Display uploaded images in a gallery."""
+def show_media(dataset_dir):
+    """Display uploaded images and .mp4 videos in a single gallery."""
     if not dataset_dir or not os.path.exists(dataset_dir):
-        # Return empty list if dataset_dir is invalid
-        return []
+        # Retorna uma string vazia se o dataset_dir for inválido
+        return ""
 
-    # List only image files
-    image_files = [
+    # Lista de arquivos de imagem e vídeos .mp4
+    media_files = [
         f for f in os.listdir(dataset_dir)
-        if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'))
+        if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.mp4'))
     ]
-    image_paths = [os.path.join(dataset_dir, img) for img in image_files[:MAX_IMAGES]]
-    return image_paths
+
+    media_paths = [os.path.join(dataset_dir, f) for f in media_files[:MAX_MEDIA]]
+
+    # Retorna a lista de caminhos de mídia para o gr.Gallery
+    return media_paths
 
 # -----------------------------
 # Download Functions
@@ -296,7 +345,7 @@ def download_dataset_config_zip(dataset_dir):
                 zf.write(filepath, arcname)
     return zip_path
 
-def download_dataset_action(dataset_dir, num_repeats, resolutions_input):
+def download_dataset_action(dataset_dir, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets_input):
     """Action to download the dataset and configurations."""
     if not dataset_dir or not os.path.exists(dataset_dir):
         return ""  # Gradio will handle this as no file to download
@@ -310,7 +359,15 @@ def download_dataset_action(dataset_dir, num_repeats, resolutions_input):
     except:
         # If parsing fails, use default value or return error
         resolutions = [512]  # Default value
-    create_dataset_config(dataset_dir, num_repeats, resolutions)
+    try:
+        # Parse frame_buckets
+        frame_buckets = json.loads(frame_buckets_input)
+        if not isinstance(frame_buckets, list) or not all(isinstance(i, int) for i in frame_buckets):
+            raise ValueError
+    except:
+        # If parsing fails, use default value or return error
+        frame_buckets = [1, 33, 65]  # Default value
+    create_dataset_config(dataset_dir, num_repeats, resolutions, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets)
     return download_dataset_config_zip(dataset_dir)
 
 # -----------------------------
@@ -323,12 +380,12 @@ def build_interface():
         gr.Markdown("# LoRA Training Interface for Hunyuan Video")
         
         # 1. Step 1: Dataset Upload
-        gr.Markdown("### Step 1: Dataset\nUpload your dataset (images and captions) either as individual files or as a ZIP archive.")
+        gr.Markdown("### Step 1: Dataset\nUpload your dataset (images, videos, and captions) either as individual files or as a ZIP archive.")
         with gr.Row():
             with gr.Column():
-                images = gr.File(
-                    label="Upload Images (.jpg, .png, .gif, .bmp, .webp) and Captions (.txt) or a ZIP archive",
-                    file_types=[".jpg", ".png", ".gif", ".bmp", ".webp", ".txt", ".zip"],
+                files = gr.File(
+                    label="Upload Images (.jpg, .png, .gif, .bmp, .webp), Videos (.mp4), Captions (.txt) or a ZIP archive",
+                    file_types=[".jpg", ".png", ".gif", ".bmp", ".webp", ".mp4", ".txt", ".zip"],  # Considera apenas .mp4 para vídeos
                     file_count="multiple",
                     type="filepath"
                 )
@@ -337,150 +394,268 @@ def build_interface():
                 dataset_path_box = gr.Textbox(label="Dataset Path", interactive=False)
         
         # Upload files
-        images.upload(
+        files.upload(
             fn=upload_dataset,
-            inputs=images,
+            inputs=files,
             outputs=[dataset_path_box, dataset_status]
         )
         
-        # 2. Image Gallery
-        gr.Markdown("### Image Gallery")
+        # 2. Media Gallery
+        gr.Markdown("### Media Gallery")
         gallery = gr.Gallery(
-            label="Uploaded Images",
+            label="Uploaded Media",
             show_label=False,
             elem_id="gallery",
             columns=3,
-            rows=1,
+            rows=2,
             object_fit="contain",
             height="auto"
         )
         
-        # Display images in gallery
+        # Display media in gallery
         dataset_path_box.change(
-            fn=show_images,
+            fn=show_media,
             inputs=dataset_path_box,
             outputs=gallery
         )
         
         # 3. Step 2: Training
         gr.Markdown("### Step 2: Training\nConfigure your training parameters and start or stop the training process.")
-        with gr.Row():
-            with gr.Column(scale=1):
-                output_dir = gr.Textbox(
-                    label="Output Directory",
-                    value=OUTPUT_DIR,
-                    info="Directory for training outputs",
-                    interactive=False
+        with gr.Column():
+            # Output Directory
+            output_dir = gr.Textbox(
+                label="Output Directory",
+                value=OUTPUT_DIR,
+                info="Directory for training outputs",
+                interactive=False
+            )
+            
+            # Training Parameters
+            gr.Markdown("#### Training Parameters")
+            with gr.Row():
+                with gr.Column(scale=1):
+                    epochs = gr.Number(
+                        label="Epochs",
+                        value=1000,
+                        info="Total number of training epochs"
+                    )
+                    batch_size = gr.Number(
+                        label="Batch Size",
+                        value=1,
+                        info="Batch size per GPU"
+                    )
+                    lr = gr.Number(
+                        label="Learning Rate",
+                        value=2e-5,
+                        step=0.0001,
+                        info="Optimizer learning rate"
+                    )
+                    save_every = gr.Number(
+                        label="Save Every N Epochs",
+                        value=2,
+                        info="Frequency to save checkpoints"
+                    )
+                    eval_every = gr.Number(
+                        label="Evaluate Every N Epochs",
+                        value=1,
+                        info="Frequency to perform evaluations"
+                    )
+                    rank = gr.Number(
+                        label="LoRA Rank",
+                        value=32,
+                        info="LoRA adapter rank"
+                    )
+                    dtype = gr.Dropdown(
+                        label="LoRA Dtype",
+                        choices=['float32', 'float16', 'bfloat16', 'float8'],
+                        value="bfloat16"
+                    )
+                    gradient_accumulation_steps = gr.Number(
+                        label="Gradient Accumulation Steps",
+                        value=4,
+                        info="Micro-batch accumulation steps"
+                    )
+            
+            # Dataset Configuration Fields
+            gr.Markdown("#### Dataset Configuration")
+            with gr.Row():
+                enable_ar_bucket = gr.Checkbox(
+                    label="Enable AR Bucket",
+                    value=True,
+                    info="Enable aspect ratio bucketing"
                 )
-                epochs = gr.Number(
-                    label="Epochs",
-                    value=1000,
-                    info="Total number of training epochs"
+                min_ar = gr.Number(
+                    label="Minimum Aspect Ratio",
+                    value=0.5,
+                    step=0.1,
+                    info="Minimum aspect ratio for AR buckets"
                 )
-                batch_size = gr.Number(
-                    label="Batch Size",
-                    value=1,
-                    info="Batch size per GPU"
+            with gr.Row():
+                max_ar = gr.Number(
+                    label="Maximum Aspect Ratio",
+                    value=2.0,
+                    step=0.1,
+                    info="Maximum aspect ratio for AR buckets"
                 )
-                lr = gr.Number(
-                    label="Learning Rate",
-                    value=2e-5,
-                    step=0.0001,
-                    info="Optimizer learning rate"
+                num_ar_buckets = gr.Number(
+                    label="Number of AR Buckets",
+                    value=7,
+                    step=1,
+                    info="Number of aspect ratio buckets"
                 )
-                save_every = gr.Number(
-                    label="Save Every N Epochs",
-                    value=2,
-                    info="Frequency to save checkpoints"
-                )
-                eval_every = gr.Number(
-                    label="Evaluate Every N Epochs",
-                    value=1,
-                    info="Frequency to perform evaluations"
-                )
-                rank = gr.Number(
-                    label="LoRA Rank",
-                    value=32,
-                    info="LoRA adapter rank"
-                )
-                dtype = gr.Dropdown(
-                    label="LoRA Dtype",
-                    choices=['float32', 'float16', 'bfloat16', 'float8'],
-                    value="bfloat16"
-                )
-                gradient_accumulation_steps = gr.Number(
-                    label="Gradient Accumulation Steps",
-                    value=4,
-                    info="Micro-batch accumulation steps"
-                )
-                
-                # Group num_repeats and resolutions_input side by side
-                with gr.Row():
-                    with gr.Column(scale=1):
-                        num_repeats = gr.Number(
-                            label="Dataset Num Repeats",
-                            value=10,
-                            info="Number of times to duplicate the dataset"
-                        )
-                    with gr.Column(scale=1):
-                        resolutions_input = gr.Textbox(
-                            label="Resolutions",
-                            value="[512]",
-                            info="Resolutions to train on, given as a list. Example: [512] or [512, 768, 1024]"
-                        )
-                
-                optimizer_type = gr.Textbox(
-                    label="Optimizer Type",
-                    value="adamw_optimizer",
-                    info="Type of optimizer"
-                )
-                betas = gr.Textbox(
-                    label="Betas",
-                    value="[0.9, 0.99]",
-                    info="Betas for the optimizer"
-                )
-                weight_decay = gr.Number(
-                    label="Weight Decay",
-                    value=0.01,
-                    step=0.0001,
-                    info="Weight decay for regularization"
-                )
-                eps = gr.Number(
-                    label="Epsilon",
-                    value=1e-8,
-                    step=0.0000001,
-                    info="Epsilon for the optimizer"
-                )
-                
-                # Model Paths
-                transformer_path = gr.Textbox(
-                    label="Transformer Path",
-                    value=f"{MODEL_DIR}/hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors",
-                    info="Path to the transformer model weights for Hunyuan Video."
-                )
-                vae_path = gr.Textbox(
-                    label="VAE Path",
-                    value=f"{MODEL_DIR}/hunyuan_video_vae_fp32.safetensors",
-                    info="Path to the VAE model file."
-                )
-                llm_path = gr.Textbox(
-                    label="LLM Path",
-                    value=f"{MODEL_DIR}/llava-llama-3-8b-text-encoder-tokenizer",
-                    info="Path to the LLM's text tokenizer and encoder."
-                )
-                clip_path = gr.Textbox(
-                    label="CLIP Path",
-                    value=f"{MODEL_DIR}/clip-vit-large-patch14",
-                    info="Path to the CLIP model directory."
-                )
-            with gr.Column(scale=1):
-                train_button = gr.Button("Start Training")
-                output = gr.Textbox(
-                    label="Output Logs",
-                    lines=20,
-                    interactive=False,
-                    elem_id="log_box"
-                )
+            frame_buckets = gr.Textbox(
+                label="Frame Buckets",
+                value="[1, 33, 65]",
+                info="Frame buckets as a JSON list. Example: [1, 33, 65]"
+            )
+            
+            # Dataset Duplication and Resolutions
+            with gr.Row():
+                with gr.Column(scale=1):
+                    num_repeats = gr.Number(
+                        label="Dataset Num Repeats",
+                        value=10,
+                        info="Number of times to duplicate the dataset"
+                    )
+                with gr.Column(scale=1):
+                    resolutions_input = gr.Textbox(
+                        label="Resolutions",
+                        value="[512]",
+                        info="Resolutions to train on, given as a list. Example: [512] or [512, 768, 1024]"
+                    )
+            
+            # Optimizer Parameters
+            gr.Markdown("#### Optimizer Parameters")
+            with gr.Row():
+                with gr.Column(scale=1):
+                    optimizer_type = gr.Textbox(
+                        label="Optimizer Type",
+                        value="adamw_optimizer",
+                        info="Type of optimizer"
+                    )
+                    betas = gr.Textbox(
+                        label="Betas",
+                        value="[0.9, 0.99]",
+                        info="Betas for the optimizer"
+                    )
+                    weight_decay = gr.Number(
+                        label="Weight Decay",
+                        value=0.01,
+                        step=0.0001,
+                        info="Weight decay for regularization"
+                    )
+                    eps = gr.Number(
+                        label="Epsilon",
+                        value=1e-8,
+                        step=0.0000001,
+                        info="Epsilon for the optimizer"
+                    )
+            
+            # Additional Training Parameters
+            gr.Markdown("#### Additional Training Parameters")
+            with gr.Row():
+                with gr.Column(scale=1):
+                    gradient_clipping = gr.Number(
+                        label="Gradient Clipping",
+                        value=1.0,
+                        step=0.1,
+                        info="Value for gradient clipping"
+                    )
+                    warmup_steps = gr.Number(
+                        label="Warmup Steps",
+                        value=100,
+                        step=10,
+                        info="Number of warmup steps"
+                    )
+                    eval_before_first_step = gr.Checkbox(
+                        label="Evaluate Before First Step",
+                        value=True,
+                        info="Perform evaluation before the first training step"
+                    )
+                    eval_micro_batch_size_per_gpu = gr.Number(
+                        label="Eval Micro Batch Size Per GPU",
+                        value=1,
+                        info="Batch size for evaluation per GPU"
+                    )
+                    eval_gradient_accumulation_steps = gr.Number(
+                        label="Eval Gradient Accumulation Steps",
+                        value=1,
+                        info="Gradient accumulation steps for evaluation"
+                    )
+                    checkpoint_every_n_minutes = gr.Number(
+                        label="Checkpoint Every N Minutes",
+                        value=120,
+                        info="Frequency to create checkpoints (in minutes)"
+                    )
+                    activation_checkpointing = gr.Checkbox(
+                        label="Activation Checkpointing",
+                        value=True,
+                        info="Enable activation checkpointing to save memory"
+                    )
+                    partition_method = gr.Textbox(
+                        label="Partition Method",
+                        value="parameters",
+                        info="Method for partitioning (e.g., parameters)"
+                    )
+                    save_dtype = gr.Dropdown(
+                        label="Save Dtype",
+                        choices=['bfloat16', 'float16', 'float32'],
+                        value="bfloat16",
+                        info="Data type to save model checkpoints"
+                    )
+                    caching_batch_size = gr.Number(
+                        label="Caching Batch Size",
+                        value=1,
+                        info="Batch size for caching"
+                    )
+                    steps_per_print = gr.Number(
+                        label="Steps Per Print",
+                        value=1,
+                        info="Frequency to print training steps"
+                    )
+                    video_clip_mode = gr.Textbox(
+                        label="Video Clip Mode",
+                        value="single_middle",
+                        info="Mode for video clipping (e.g., single_middle)"
+                    )
+            
+            # Model Paths
+            gr.Markdown("#### Model Paths")
+            with gr.Row():
+                with gr.Column(scale=1):
+                    transformer_path = gr.Textbox(
+                        label="Transformer Path",
+                        value=f"{MODEL_DIR}/hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors",
+                        info="Path to the transformer model weights for Hunyuan Video."
+                    )
+                    vae_path = gr.Textbox(
+                        label="VAE Path",
+                        value=f"{MODEL_DIR}/hunyuan_video_vae_fp32.safetensors",
+                        info="Path to the VAE model file."
+                    )
+                    llm_path = gr.Textbox(
+                        label="LLM Path",
+                        value=f"{MODEL_DIR}/llava-llama-3-8b-text-encoder-tokenizer",
+                        info="Path to the LLM's text tokenizer and encoder."
+                    )
+                    clip_path = gr.Textbox(
+                        label="CLIP Path",
+                        value=f"{MODEL_DIR}/clip-vit-large-patch14",
+                        info="Path to the CLIP model directory."
+                    )
+            
+            # Start Training Button and Log Box
+            with gr.Row():
+                with gr.Column(scale=1):
+                    train_button = gr.Button("Start Training")
+            with gr.Row():
+                with gr.Column(scale=1):
+                    output = gr.Textbox(
+                        label="Output Logs",
+                        lines=20,
+                        interactive=False,
+                        elem_id="log_box"
+                    )
         
         # Initialize States
         is_training_state = gr.State(False)
@@ -488,8 +663,12 @@ def build_interface():
         
         # 4. Training Button Action
         def toggle_training(is_training, logs, dataset_path, output_dir, epochs, batch_size, lr, save_every, eval_every,
-                            rank, dtype, transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas,
-                            weight_decay, eps, gradient_accumulation_steps, num_repeats, resolutions_input):
+                            rank, dtype, transformer_path, vae_path, llm_path, clip_path,
+                            optimizer_type, betas, weight_decay, eps, gradient_accumulation_steps,
+                            num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets,
+                            gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu,
+                            eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing,
+                            partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode):
             if is_training:
                 # Stop training
                 message = stop_training()
@@ -515,12 +694,60 @@ def build_interface():
                         yield (logs, is_training, "Start Training")
                         return
 
+                    # Parse frame_buckets as list of integers
+                    try:
+                        frame_buckets_parsed = json.loads(frame_buckets)
+                        if not isinstance(frame_buckets_parsed, list) or not all(isinstance(i, int) for i in frame_buckets_parsed):
+                            raise ValueError
+                    except:
+                        # If parsing fails, return error
+                        message = "Frame Buckets must be a list of integers. Example: [1, 33, 65]"
+                        logs += message + "\n"
+                        yield (logs, is_training, "Start Training")
+                        return
+
                     # Start training
                     is_training = True
                     logs = ""
-                    generator = train_lora(dataset_path, output_dir, epochs, batch_size, lr, save_every, eval_every,
-                                           rank, dtype, transformer_path, vae_path, llm_path, clip_path, optimizer_type,
-                                           betas, weight_decay, eps, gradient_accumulation_steps, num_repeats, resolutions)
+                    generator = train_lora(
+                        dataset_path, 
+                        output_dir, 
+                        epochs, 
+                        batch_size, 
+                        lr, 
+                        save_every, 
+                        eval_every,
+                        rank, 
+                        dtype, 
+                        transformer_path, 
+                        vae_path, 
+                        llm_path, 
+                        clip_path, 
+                        optimizer_type,
+                        betas, 
+                        weight_decay, 
+                        eps, 
+                        gradient_accumulation_steps, 
+                        num_repeats, 
+                        resolutions,
+                        enable_ar_bucket, 
+                        min_ar, 
+                        max_ar, 
+                        num_ar_buckets, 
+                        frame_buckets_parsed,
+                        gradient_clipping,
+                        warmup_steps,
+                        eval_before_first_step,
+                        eval_micro_batch_size_per_gpu,
+                        eval_gradient_accumulation_steps,
+                        checkpoint_every_n_minutes,
+                        activation_checkpointing,
+                        partition_method,
+                        save_dtype,
+                        caching_batch_size,
+                        steps_per_print,
+                        video_clip_mode
+                    )
                     for log in generator:
                         logs += log + "\n"
                         yield (logs, is_training, "Stop Training")
@@ -530,7 +757,11 @@ def build_interface():
             inputs=[
                 is_training_state, logs_state, dataset_path_box, output_dir, epochs, batch_size, lr, save_every, eval_every,
                 rank, dtype, transformer_path, vae_path, llm_path, clip_path,
-                optimizer_type, betas, weight_decay, eps, gradient_accumulation_steps, num_repeats, resolutions_input
+                optimizer_type, betas, weight_decay, eps, gradient_accumulation_steps,
+                num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets,
+                gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu,
+                eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing,
+                partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode
             ],
             outputs=[output, is_training_state, train_button]
         )
@@ -549,7 +780,7 @@ def build_interface():
             dataset_file = gr.File(label="Download Dataset & Configs File")
             download_dataset_button.click(
                 fn=download_dataset_action,
-                inputs=[dataset_path_box, num_repeats, resolutions_input],
+                inputs=[dataset_path_box, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets],
                 outputs=dataset_file
             )
         
