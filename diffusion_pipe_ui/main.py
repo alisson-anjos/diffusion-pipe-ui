@@ -11,11 +11,6 @@ import zipfile
 import signal
 import psutil
 import json
-from fastapi import FastAPI
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
-
 # -----------------------------
 # Configuration and Constants
 # -----------------------------
@@ -32,7 +27,7 @@ os.makedirs(BASE_DATASET_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Maximum number of images to display in the gallery
-MAX_IMAGES = 1000
+MAX_IMAGES = 50
 
 # -----------------------------
 # Training Process Management
@@ -352,14 +347,7 @@ def build_interface():
                 dataset_status = gr.Textbox(label="Upload Status", interactive=False)
                 dataset_path_box = gr.Textbox(label="Dataset Path", interactive=False)
         
-        # 1.1. Novo Campo: Resolutions
-        with gr.Row():
-            with gr.Column():
-                resolutions_input = gr.Textbox(
-                    label="Resolutions",
-                    value="[512]",
-                    info="Resolutions to train on, given as a list. Example: [512] or [512, 768, 1024]"
-                )
+        
         
         # Upload files
         images.upload(
@@ -442,6 +430,11 @@ def build_interface():
                     label="Dataset Num Repeats",
                     value=10,
                     info="Number of times to duplicate the dataset"
+                )
+                resolutions_input = gr.Textbox(
+                    label="Resolutions",
+                    value="[512]",
+                    info="Resolutions to train on, given as a list. Example: [512] or [512, 768, 1024]"
                 )
                 optimizer_type = gr.Textbox(
                     label="Optimizer Type",
@@ -588,10 +581,6 @@ def build_interface():
 
 if __name__ == "__main__":
     demo = build_interface()
-    
-    # Acessar o aplicativo FastAPI subjacente do Gradio
-    app = gr.routes.App.get_app(demo)
-    app.add_middleware(LimitUploadSizeMiddleware)
     
     demo.launch(
         server_name="0.0.0.0",

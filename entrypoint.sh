@@ -6,11 +6,11 @@ DOWNLOAD_MODELS=${DOWNLOAD_MODELS:-"true"}  # Default if not set
 
 echo "DOWNLOAD_MODELS is: $DOWNLOAD_MODELS"
 
+source /opt/conda/etc/profile.d/conda.sh
+conda activate pyenv
+
 if [ ! -f "$INIT_MARKER" ]; then
     echo "First-time initialization..."
-    
-    source /opt/conda/etc/profile.d/conda.sh
-    conda activate pyenv
 
     REPO_URL=${REPO_URL:-"https://github.com/tdrussell/diffusion-pipe"}
     REPO_BRANCH=${REPO_BRANCH:-"main"}
