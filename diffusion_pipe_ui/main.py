@@ -11,6 +11,7 @@ import zipfile
 import signal
 import psutil
 import json
+
 # -----------------------------
 # Configuration and Constants
 # -----------------------------
@@ -57,7 +58,7 @@ def generate_unique_filename(base_name):
 def create_dataset_config(dataset_path, num_repeats, resolutions):
     """Create and save the dataset configuration in TOML format."""
     dataset_config = {
-        "resolutions": resolutions,  # Utiliza a lista de resoluções fornecida
+        "resolutions": resolutions,  # Uses the provided list of resolutions
         "enable_ar_bucket": True,
         "min_ar": 0.5,
         "max_ar": 2.0,
@@ -161,7 +162,7 @@ def train_lora(dataset_path, output_dir, epochs, batch_size, lr, save_every, eva
             yield "Training is already in progress."
             return
 
-        # Cria as configurações
+        # Create configurations
         dataset_config_path = create_dataset_config(dataset_path, num_repeats, resolutions)
         training_config_path = create_training_config(
             output_dir, dataset_config_path, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
@@ -169,7 +170,7 @@ def train_lora(dataset_path, output_dir, epochs, batch_size, lr, save_every, eva
             gradient_accumulation_steps
         )
 
-        # Comando de treinamento (substitua pelo comando real)
+        # Training command (replace with the actual command)
         conda_activate_path = "/opt/conda/etc/profile.d/conda.sh"
         conda_env_name = "pyenv"
 
@@ -181,17 +182,17 @@ def train_lora(dataset_path, output_dir, epochs, batch_size, lr, save_every, eva
             f"train.py --deepspeed --config {training_config_path}'"
         )
 
-        # Inicia o processo de treinamento
+        # Start the training process
         training_process = subprocess.Popen(
             command,
             shell=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            start_new_session=True  # Inicia o processo em uma nova sessão
+            start_new_session=True  # Start the process in a new session
         )
 
-    # Transmite os logs
+    # Stream the logs
     try:
         while True:
             output = training_process.stdout.readline()
@@ -302,27 +303,15 @@ def download_dataset_action(dataset_dir, num_repeats, resolutions_input):
     if not num_repeats:
         num_repeats = 10
     try:
-        # Parsear resoluções
+        # Parse resolutions
         resolutions = json.loads(resolutions_input)
         if not isinstance(resolutions, list) or not all(isinstance(i, int) for i in resolutions):
             raise ValueError
     except:
-        # Se falhar, usar valor padrão ou retornar erro
-        resolutions = [512]  # Valor padrão
+        # If parsing fails, use default value or return error
+        resolutions = [512]  # Default value
     create_dataset_config(dataset_dir, num_repeats, resolutions)
     return download_dataset_config_zip(dataset_dir)
-
-# -----------------------------
-# Custom Middleware for Large Uploads
-# -----------------------------
-
-class LimitUploadSizeMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        max_size = 500 * 1024 * 1024  # 500 MB
-        content_length = request.headers.get('Content-Length')
-        if content_length and int(content_length) > max_size:
-            return Response("Payload Too Large", status_code=413)
-        return await call_next(request)
 
 # -----------------------------
 # Gradio Interface Construction
@@ -346,8 +335,6 @@ def build_interface():
             with gr.Column():
                 dataset_status = gr.Textbox(label="Upload Status", interactive=False)
                 dataset_path_box = gr.Textbox(label="Dataset Path", interactive=False)
-        
-        
         
         # Upload files
         images.upload(
@@ -376,7 +363,7 @@ def build_interface():
         )
         
         # 3. Step 2: Training
-        gr.Markdown("### Step 2: Training\nClick the button below para iniciar ou parar o treinamento.")
+        gr.Markdown("### Step 2: Training\nConfigure your training parameters and start or stop the training process.")
         with gr.Row():
             with gr.Column(scale=1):
                 output_dir = gr.Textbox(
@@ -426,16 +413,22 @@ def build_interface():
                     value=4,
                     info="Micro-batch accumulation steps"
                 )
-                num_repeats = gr.Number(
-                    label="Dataset Num Repeats",
-                    value=10,
-                    info="Number of times to duplicate the dataset"
-                )
-                resolutions_input = gr.Textbox(
-                    label="Resolutions",
-                    value="[512]",
-                    info="Resolutions to train on, given as a list. Example: [512] or [512, 768, 1024]"
-                )
+                
+                # Group num_repeats and resolutions_input side by side
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        num_repeats = gr.Number(
+                            label="Dataset Num Repeats",
+                            value=10,
+                            info="Number of times to duplicate the dataset"
+                        )
+                    with gr.Column(scale=1):
+                        resolutions_input = gr.Textbox(
+                            label="Resolutions",
+                            value="[512]",
+                            info="Resolutions to train on, given as a list. Example: [512] or [512, 768, 1024]"
+                        )
+                
                 optimizer_type = gr.Textbox(
                     label="Optimizer Type",
                     value="adamw_optimizer",
@@ -444,41 +437,41 @@ def build_interface():
                 betas = gr.Textbox(
                     label="Betas",
                     value="[0.9, 0.99]",
-                    info="Betas para o otimizador"
+                    info="Betas for the optimizer"
                 )
                 weight_decay = gr.Number(
                     label="Weight Decay",
                     value=0.01,
                     step=0.0001,
-                    info="Weight decay para regularização"
+                    info="Weight decay for regularization"
                 )
                 eps = gr.Number(
                     label="Epsilon",
                     value=1e-8,
                     step=0.0000001,
-                    info="Epsilon para o otimizador"
+                    info="Epsilon for the optimizer"
                 )
                 
                 # Model Paths
                 transformer_path = gr.Textbox(
                     label="Transformer Path",
                     value=f"{MODEL_DIR}/hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors",
-                    info="Path para os pesos do modelo transformer Hunyuan Video."
+                    info="Path to the transformer model weights for Hunyuan Video."
                 )
                 vae_path = gr.Textbox(
                     label="VAE Path",
                     value=f"{MODEL_DIR}/hunyuan_video_vae_fp32.safetensors",
-                    info="Path para o arquivo do modelo VAE."
+                    info="Path to the VAE model file."
                 )
                 llm_path = gr.Textbox(
                     label="LLM Path",
                     value=f"{MODEL_DIR}/llava-llama-3-8b-text-encoder-tokenizer",
-                    info="Path para o tokenizer e encoder de texto do LLM."
+                    info="Path to the LLM's text tokenizer and encoder."
                 )
                 clip_path = gr.Textbox(
                     label="CLIP Path",
                     value=f"{MODEL_DIR}/clip-vit-large-patch14",
-                    info="Path para o diretório do modelo CLIP."
+                    info="Path to the CLIP model directory."
                 )
             with gr.Column(scale=1):
                 train_button = gr.Button("Start Training")
@@ -509,14 +502,14 @@ def build_interface():
                     logs += message + "\n"
                     yield (logs, is_training, "Start Training")
                 else:
-                    # Parse as lista de inteiros
+                    # Parse resolutions as list of integers
                     try:
-                        # Tenta parsear usando JSON
+                        # Try to parse using JSON
                         resolutions = json.loads(resolutions_input)
                         if not isinstance(resolutions, list) or not all(isinstance(i, int) for i in resolutions):
                             raise ValueError
                     except:
-                        # Se falhar, retorna erro
+                        # If parsing fails, return error
                         message = "Resolutions must be a list of integers. Example: [512] or [512, 768, 1024]"
                         logs += message + "\n"
                         yield (logs, is_training, "Start Training")

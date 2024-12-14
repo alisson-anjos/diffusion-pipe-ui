@@ -8,7 +8,7 @@ FROM $DOCKER_FROM AS base
 
 WORKDIR /app
 
-# Variáveis de ambiente
+# Environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 ENV PYTHON_VERSION=3.12
@@ -19,52 +19,55 @@ ENV OUTPUT_DIR="/output"
 ENV POETRY_HOME="$CONDA_DIR"
 ENV PATH="$POETRY_HOME/bin:$PATH"
 
-# Instalar dependências necessárias para Miniconda
+# Install dependencies required for Miniconda
 RUN apt-get update -y && \
     apt-get install -y wget bzip2 ca-certificates git curl && \
     apt-get install -y --no-install-recommends openssh-server openssh-client git-lfs vim zip unzip && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Baixar e instalar Miniconda
+# Download and install Miniconda
 RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh && \
     bash miniconda.sh -b -p $CONDA_DIR && \
     rm miniconda.sh && \
     $CONDA_DIR/bin/conda init bash
 
-# Criar ambiente com Python 3.12
+# Create environment with Python 3.12
 RUN $CONDA_DIR/bin/conda create -n pyenv python=3.12 -y
 
-# Instalar Poetry no ambiente conda
+# Install Poetry in the conda environment
 RUN $CONDA_DIR/bin/conda run -n pyenv pip install poetry && \
     $CONDA_DIR/bin/conda run -n pyenv poetry config virtualenvs.create false
 
-# Definir versões do PyTorch via argumentos
+# Define PyTorch versions via arguments
 ARG PYTORCH="2.4.1"
 ARG CUDA="124"
 
-# Instalar PyTorch com a versão e CUDA especificadas
+# Install PyTorch with specified version and CUDA
 RUN $CONDA_DIR/bin/conda run -n pyenv \
     pip install torch==$PYTORCH torchvision torchaudio --index-url https://download.pytorch.org/whl/cu$CUDA
 
-# Copiar arquivos de configuração do Poetry
+# Copy Poetry configuration files
 COPY pyproject.toml poetry.lock* /app/
 
-# Instalar dependências do Poetry
+# Install Poetry dependencies
 RUN $CONDA_DIR/bin/conda run -n pyenv \
     poetry install --only main --no-interaction --no-ansi
 
 # Install git lfs
 RUN apt-get update && apt-get install -y git-lfs && git lfs install
 
-# Copiar todo o conteúdo do projeto
+RUN echo "cache"
+
+# Copy all files
 COPY . /app
 
-# Garantir que o script de entrypoint seja executável
+
+# Ensure that the entrypoint script is executable
 RUN chmod +x /app/entrypoint.sh
 
-# Expor a porta do Gradio
+# Expose the Gradio port
 EXPOSE $GRADIO_PORT
 
-# Definir o entrypoint original
+# Set the original entrypoint
 ENTRYPOINT ["/app/entrypoint.sh"]
