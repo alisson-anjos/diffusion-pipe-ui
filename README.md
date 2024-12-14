@@ -43,6 +43,8 @@ You can mount host directories to store models and training outputs outside the 
 docker run --gpus all -it \
   -v /path/to/models:/models \
   -v /path/to/output:/output \
+  -v /path/to/datasets:/datasets \
+  -v /path/to/config_history:/config_history \
   -p 7860:7860 \
   alissonpereiraanjos/diffusion-pipe-ui:latest
 ```
@@ -65,6 +67,8 @@ By default, the container downloads the required models during the first initial
 docker run --gpus all -it \
   -v /path/to/models:/models \
   -v /path/to/output:/output \
+  -v /path/to/datasets:/datasets \
+  -v /path/to/config_history:/config_history \
   -p 7860:7860 \
   -e DOWNLOAD_MODELS=false \
   alissonpereiraanjos/diffusion-pipe-ui:latest
@@ -78,6 +82,8 @@ If you prefer to run the container in the background without an interactive term
 docker run --gpus all -d \
   -v /path/to/models:/models \
   -v /path/to/output:/output \
+  -v /path/to/datasets:/datasets \
+  -v /path/to/config_history:/config_history \
   -p 7860:7860 \
   -e DOWNLOAD_MODELS=false \
   alissonpereiraanjos/diffusion-pipe-ui:latest
