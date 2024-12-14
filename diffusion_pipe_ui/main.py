@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import gradio as gr
 import os
 import shutil
@@ -8,6 +10,11 @@ import threading
 import zipfile
 import signal
 import psutil
+import json
+from fastapi import FastAPI
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 
 # -----------------------------
 # Configuration and Constants
@@ -52,10 +59,10 @@ def generate_unique_filename(base_name):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"{base_name}_{timestamp}.toml"
 
-def create_dataset_config(dataset_path, num_repeats):
+def create_dataset_config(dataset_path, num_repeats, resolutions):
     """Create and save the dataset configuration in TOML format."""
     dataset_config = {
-        "resolutions": [512],
+        "resolutions": resolutions,  # Utiliza a lista de resoluções fornecida
         "enable_ar_bucket": True,
         "min_ar": 0.5,
         "max_ar": 2.0,
@@ -151,7 +158,7 @@ def stop_training():
 
 def train_lora(dataset_path, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
                transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
-               gradient_accumulation_steps, num_repeats):
+               gradient_accumulation_steps, num_repeats, resolutions):
     """Run the training command and stream logs."""
     global training_process
     with training_lock:
@@ -159,15 +166,15 @@ def train_lora(dataset_path, output_dir, epochs, batch_size, lr, save_every, eva
             yield "Training is already in progress."
             return
 
-        # Create configurations
-        dataset_config_path = create_dataset_config(dataset_path, num_repeats)
+        # Cria as configurações
+        dataset_config_path = create_dataset_config(dataset_path, num_repeats, resolutions)
         training_config_path = create_training_config(
             output_dir, dataset_config_path, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
             transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
             gradient_accumulation_steps
         )
 
-        # Training command (replace com o comando real de treinamento)
+        # Comando de treinamento (substitua pelo comando real)
         conda_activate_path = "/opt/conda/etc/profile.d/conda.sh"
         conda_env_name = "pyenv"
 
@@ -179,22 +186,27 @@ def train_lora(dataset_path, output_dir, epochs, batch_size, lr, save_every, eva
             f"train.py --deepspeed --config {training_config_path}'"
         )
 
-        # Start the training process
+        # Inicia o processo de treinamento
         training_process = subprocess.Popen(
             command,
             shell=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            start_new_session=True  # Start the process in a new session
+            start_new_session=True  # Inicia o processo em uma nova sessão
         )
 
-    # Stream logs
+    # Transmite os logs
     try:
-        for line in training_process.stdout:
-            yield line.strip()
-        for line in training_process.stderr:
-            yield line.strip()
+        while True:
+            output = training_process.stdout.readline()
+            error = training_process.stderr.readline()
+            if output:
+                yield output.strip()
+            if error:
+                yield error.strip()
+            if output == "" and error == "" and training_process.poll() is not None:
+                break
     except Exception as e:
         yield f"Error during training: {str(e)}"
     finally:
@@ -208,15 +220,32 @@ def train_lora(dataset_path, output_dir, epochs, batch_size, lr, save_every, eva
 
 def upload_dataset(files):
     """Handle uploaded dataset files and store them in a unique directory."""
+    if not files:
+        return "", "No files uploaded."
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     dataset_dir = os.path.join(BASE_DATASET_DIR, f"dataset_{timestamp}")
     os.makedirs(dataset_dir, exist_ok=True)
     uploaded_files = []
+
     for file_path in files:
         filename = os.path.basename(file_path)
         dest_path = os.path.join(dataset_dir, filename)
-        shutil.copy(file_path, dest_path)
-        uploaded_files.append(filename)
+
+        if zipfile.is_zipfile(file_path):
+            # If the file is a ZIP, extract its contents
+            try:
+                with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                    zip_ref.extractall(dataset_dir)
+                uploaded_files.append(f"{filename} (extracted)")
+            except zipfile.BadZipFile:
+                uploaded_files.append(f"{filename} (invalid ZIP)")
+                continue
+        else:
+            # If it's not a ZIP, copy the file directly
+            shutil.copy(file_path, dest_path)
+            uploaded_files.append(filename)
+
     return dataset_dir, f"Dataset uploaded to {dataset_dir}: {', '.join(uploaded_files)}"
 
 def show_images(dataset_dir):
@@ -228,7 +257,7 @@ def show_images(dataset_dir):
     # List only image files
     image_files = [
         f for f in os.listdir(dataset_dir)
-        if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif'))
+        if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'))
     ]
     image_paths = [os.path.join(dataset_dir, img) for img in image_files[:MAX_IMAGES]]
     return image_paths
@@ -271,14 +300,34 @@ def download_dataset_config_zip(dataset_dir):
                 zf.write(filepath, arcname)
     return zip_path
 
-def download_dataset_action(dataset_dir, num_repeats):
+def download_dataset_action(dataset_dir, num_repeats, resolutions_input):
     """Action to download the dataset and configurations."""
     if not dataset_dir or not os.path.exists(dataset_dir):
-        return ""  # Gradio will handle isso como nenhum arquivo para download
+        return ""  # Gradio will handle this as no file to download
     if not num_repeats:
         num_repeats = 10
-    create_dataset_config(dataset_dir, num_repeats)
+    try:
+        # Parsear resoluções
+        resolutions = json.loads(resolutions_input)
+        if not isinstance(resolutions, list) or not all(isinstance(i, int) for i in resolutions):
+            raise ValueError
+    except:
+        # Se falhar, usar valor padrão ou retornar erro
+        resolutions = [512]  # Valor padrão
+    create_dataset_config(dataset_dir, num_repeats, resolutions)
     return download_dataset_config_zip(dataset_dir)
+
+# -----------------------------
+# Custom Middleware for Large Uploads
+# -----------------------------
+
+class LimitUploadSizeMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        max_size = 500 * 1024 * 1024  # 500 MB
+        content_length = request.headers.get('Content-Length')
+        if content_length and int(content_length) > max_size:
+            return Response("Payload Too Large", status_code=413)
+        return await call_next(request)
 
 # -----------------------------
 # Gradio Interface Construction
@@ -290,18 +339,27 @@ def build_interface():
         gr.Markdown("# LoRA Training Interface for Hunyuan Video")
         
         # 1. Step 1: Dataset Upload
-        gr.Markdown("### Step 1: Dataset\nUpload your dataset (images and captions).")
+        gr.Markdown("### Step 1: Dataset\nUpload your dataset (images and captions) either as individual files or as a ZIP archive.")
         with gr.Row():
             with gr.Column():
                 images = gr.File(
-                    label="Upload your images (.jpg, .png, .gif) and captions (.txt)",
-                    file_types=[".jpg", ".png", ".gif", ".txt"],
+                    label="Upload Images (.jpg, .png, .gif, .bmp, .webp) and Captions (.txt) or a ZIP archive",
+                    file_types=[".jpg", ".png", ".gif", ".bmp", ".webp", ".txt", ".zip"],
                     file_count="multiple",
                     type="filepath"
                 )
             with gr.Column():
                 dataset_status = gr.Textbox(label="Upload Status", interactive=False)
                 dataset_path_box = gr.Textbox(label="Dataset Path", interactive=False)
+        
+        # 1.1. Novo Campo: Resolutions
+        with gr.Row():
+            with gr.Column():
+                resolutions_input = gr.Textbox(
+                    label="Resolutions",
+                    value="[512]",
+                    info="Resolutions to train on, given as a list. Example: [512] or [512, 768, 1024]"
+                )
         
         # Upload files
         images.upload(
@@ -330,45 +388,45 @@ def build_interface():
         )
         
         # 3. Step 2: Training
-        gr.Markdown("### Step 2: Training\nClick the button abaixo para iniciar ou parar o treinamento.")
+        gr.Markdown("### Step 2: Training\nClick the button below para iniciar ou parar o treinamento.")
         with gr.Row():
             with gr.Column(scale=1):
                 output_dir = gr.Textbox(
                     label="Output Directory",
                     value=OUTPUT_DIR,
-                    info="Diretório para os resultados",
+                    info="Directory for training outputs",
                     interactive=False
                 )
                 epochs = gr.Number(
                     label="Epochs",
                     value=1000,
-                    info="Total de épocas de treinamento"
+                    info="Total number of training epochs"
                 )
                 batch_size = gr.Number(
                     label="Batch Size",
                     value=1,
-                    info="Tamanho do batch por GPU"
+                    info="Batch size per GPU"
                 )
                 lr = gr.Number(
                     label="Learning Rate",
                     value=2e-5,
                     step=0.0001,
-                    info="Taxa de aprendizado do otimizador"
+                    info="Optimizer learning rate"
                 )
                 save_every = gr.Number(
-                    label="Salvar a Cada N Epochs",
+                    label="Save Every N Epochs",
                     value=2,
-                    info="Frequência para salvar checkpoints"
+                    info="Frequency to save checkpoints"
                 )
                 eval_every = gr.Number(
-                    label="Avaliar a Cada N Epochs",
+                    label="Evaluate Every N Epochs",
                     value=1,
-                    info="Frequência para executar avaliações"
+                    info="Frequency to perform evaluations"
                 )
                 rank = gr.Number(
                     label="LoRA Rank",
                     value=32,
-                    info="Complexidade do adaptador LoRA"
+                    info="LoRA adapter rank"
                 )
                 dtype = gr.Dropdown(
                     label="LoRA Dtype",
@@ -378,17 +436,17 @@ def build_interface():
                 gradient_accumulation_steps = gr.Number(
                     label="Gradient Accumulation Steps",
                     value=4,
-                    info="Acumulação de micro-batches"
+                    info="Micro-batch accumulation steps"
                 )
                 num_repeats = gr.Number(
                     label="Dataset Num Repeats",
                     value=10,
-                    info="Quantas vezes duplicar o dataset"
+                    info="Number of times to duplicate the dataset"
                 )
                 optimizer_type = gr.Textbox(
                     label="Optimizer Type",
                     value="adamw_optimizer",
-                    info="Tipo de otimizador"
+                    info="Type of optimizer"
                 )
                 betas = gr.Textbox(
                     label="Betas",
@@ -399,7 +457,7 @@ def build_interface():
                     label="Weight Decay",
                     value=0.01,
                     step=0.0001,
-                    info="Regularização"
+                    info="Weight decay para regularização"
                 )
                 eps = gr.Number(
                     label="Epsilon",
@@ -412,22 +470,22 @@ def build_interface():
                 transformer_path = gr.Textbox(
                     label="Transformer Path",
                     value=f"{MODEL_DIR}/hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors",
-                    info="Caminho para os pesos do modelo transformer (Hunyuan Video)."
+                    info="Path para os pesos do modelo transformer Hunyuan Video."
                 )
                 vae_path = gr.Textbox(
                     label="VAE Path",
                     value=f"{MODEL_DIR}/hunyuan_video_vae_fp32.safetensors",
-                    info="Caminho para o arquivo do modelo VAE."
+                    info="Path para o arquivo do modelo VAE."
                 )
                 llm_path = gr.Textbox(
                     label="LLM Path",
                     value=f"{MODEL_DIR}/llava-llama-3-8b-text-encoder-tokenizer",
-                    info="Caminho para o tokenizer e text encoder do LLM."
+                    info="Path para o tokenizer e encoder de texto do LLM."
                 )
                 clip_path = gr.Textbox(
                     label="CLIP Path",
                     value=f"{MODEL_DIR}/clip-vit-large-patch14",
-                    info="Caminho para o diretório do modelo CLIP."
+                    info="Path para o diretório do modelo CLIP."
                 )
             with gr.Column(scale=1):
                 train_button = gr.Button("Start Training")
@@ -445,7 +503,7 @@ def build_interface():
         # 4. Training Button Action
         def toggle_training(is_training, logs, dataset_path, output_dir, epochs, batch_size, lr, save_every, eval_every,
                             rank, dtype, transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas,
-                            weight_decay, eps, gradient_accumulation_steps, num_repeats):
+                            weight_decay, eps, gradient_accumulation_steps, num_repeats, resolutions_input):
             if is_training:
                 # Stop training
                 message = stop_training()
@@ -458,12 +516,25 @@ def build_interface():
                     logs += message + "\n"
                     yield (logs, is_training, "Start Training")
                 else:
+                    # Parse as lista de inteiros
+                    try:
+                        # Tenta parsear usando JSON
+                        resolutions = json.loads(resolutions_input)
+                        if not isinstance(resolutions, list) or not all(isinstance(i, int) for i in resolutions):
+                            raise ValueError
+                    except:
+                        # Se falhar, retorna erro
+                        message = "Resolutions must be a list of integers. Example: [512] or [512, 768, 1024]"
+                        logs += message + "\n"
+                        yield (logs, is_training, "Start Training")
+                        return
+
                     # Start training
                     is_training = True
                     logs = ""
                     generator = train_lora(dataset_path, output_dir, epochs, batch_size, lr, save_every, eval_every,
                                            rank, dtype, transformer_path, vae_path, llm_path, clip_path, optimizer_type,
-                                           betas, weight_decay, eps, gradient_accumulation_steps, num_repeats)
+                                           betas, weight_decay, eps, gradient_accumulation_steps, num_repeats, resolutions)
                     for log in generator:
                         logs += log + "\n"
                         yield (logs, is_training, "Stop Training")
@@ -473,7 +544,7 @@ def build_interface():
             inputs=[
                 is_training_state, logs_state, dataset_path_box, output_dir, epochs, batch_size, lr, save_every, eval_every,
                 rank, dtype, transformer_path, vae_path, llm_path, clip_path,
-                optimizer_type, betas, weight_decay, eps, gradient_accumulation_steps, num_repeats
+                optimizer_type, betas, weight_decay, eps, gradient_accumulation_steps, num_repeats, resolutions_input
             ],
             outputs=[output, is_training_state, train_button]
         )
@@ -492,7 +563,7 @@ def build_interface():
             dataset_file = gr.File(label="Download Dataset & Configs File")
             download_dataset_button.click(
                 fn=download_dataset_action,
-                inputs=[dataset_path_box, num_repeats],
+                inputs=[dataset_path_box, num_repeats, resolutions_input],
                 outputs=dataset_file
             )
         
@@ -517,10 +588,16 @@ def build_interface():
 
 if __name__ == "__main__":
     demo = build_interface()
+    
+    # Acessar o aplicativo FastAPI subjacente do Gradio
+    app = gr.routes.App.get_app(demo)
+    app.add_middleware(LimitUploadSizeMiddleware)
+    
     demo.launch(
         server_name="0.0.0.0",
         server_port=7860,
         auth=None,
         share=False,
-        allowed_paths=["/datasets", "/output", "/config_history", "/models", "."]
+        max_file_size=2 * gr.FileSize.GB,
+        allowed_paths=["/datasets", "/output", "/config_history", "/models", ".", "/app"]
     )

@@ -323,12 +323,12 @@ tqdm = ["tqdm"]
 
 [[package]]
 name = "gradio"
-version = "5.8.0"
+version = "5.9.0"
 description = "Python library for easily interacting with trained machine learning models"
 optional = false
 python-versions = ">=3.10"
 files = [
-    {file = "gradio-5.8.0-py3-none-any.whl", hash = "sha256:428ad660fc48104f0c60f8ae808ab5e2afec03a472a0fb734348c4e916de74dc"},
+    {file = "gradio-5.9.0-py3-none-any.whl", hash = "sha256:16a84f3101eecd3f06ffc08b185046d4255fca8b423a4bdc421006a0adf02509"},
 ]
 
 [package.dependencies]
@@ -337,7 +337,7 @@ anyio = ">=3.0,<5.0"
 audioop-lts = {version = "<1.0", markers = "python_version >= \"3.13\""}
 fastapi = ">=0.115.2,<1.0"
 ffmpy = "*"
-gradio-client = "1.5.1"
+gradio-client = "1.5.2"
 httpx = ">=0.24.1"
 huggingface-hub = ">=0.25.1"
 jinja2 = "<4.0"
@@ -366,13 +366,13 @@ oauth = ["authlib", "itsdangerous"]
 
 [[package]]
 name = "gradio-client"
-version = "1.5.1"
+version = "1.5.2"
 description = "Python library for easily interacting with trained machine learning models"
 optional = false
 python-versions = ">=3.10"
 files = [
-    {file = "gradio_client-1.5.1-py3-none-any.whl", hash = "sha256:175e4ac399591d919af85a097661cdd760b8dd1ca229e28ef4da978fde84a398"},
-    {file = "gradio_client-1.5.1.tar.gz", hash = "sha256:c443013e3532828e202c9679b254016406a1753666c3c601ea8557c724adbaf7"},
+    {file = "gradio_client-1.5.2-py3-none-any.whl", hash = "sha256:e25615059e540247724856fef15b3974cc9290b158356d4e541b0105c0342514"},
+    {file = "gradio_client-1.5.2.tar.gz", hash = "sha256:96693ed7d28558ad730ada1045c50182bfc49987aa2104f56c168886d4ad2635"},
 ]
 
 [package.dependencies]
@@ -1445,13 +1445,13 @@ zstd = ["zstandard (>=0.18.0)"]
 
 [[package]]
 name = "uvicorn"
-version = "0.32.1"
+version = "0.33.0"
 description = "The lightning-fast ASGI server."
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "uvicorn-0.32.1-py3-none-any.whl", hash = "sha256:82ad92fd58da0d12af7482ecdb5f2470a04c9c9a53ced65b9bbb4a205377602e"},
-    {file = "uvicorn-0.32.1.tar.gz", hash = "sha256:ee9519c246a72b1c084cea8d3b44ed6026e78a4a309cbedae9c37e4cb9fbb175"},
+    {file = "uvicorn-0.33.0-py3-none-any.whl", hash = "sha256:2c30de4aeea83661a520abab179b24084a0019c0c1bbe137e5409f741cbde5f8"},
+    {file = "uvicorn-0.33.0.tar.gz", hash = "sha256:3577119f82b7091cf4d3d4177bfda0bae4723ed92ab1439e8d779de880c9cc59"},
 ]
 
 [package.dependencies]
