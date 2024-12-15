@@ -47,6 +47,8 @@ ARG CUDA="124"
 RUN $CONDA_DIR/bin/conda run -n pyenv \
     pip install torch==$PYTORCH torchvision torchaudio --index-url https://download.pytorch.org/whl/cu$CUDA
 
+WORKDIR /workspace
+
 # Copy Poetry configuration files
 COPY pyproject.toml poetry.lock* /workspace/
 
@@ -67,7 +69,7 @@ COPY default /etc/nginx/sites-available/default
 RUN pip3 install jupyterlab
 EXPOSE 8888
 
-COPY poetry.lock pyproject.toml /workspace/app/
+COPY poetry.lock pyproject.toml /workspace/
 
 COPY --chmod=755 start.sh /start.sh
 COPY --chmod=755 entrypoint.sh /entrypoint.sh

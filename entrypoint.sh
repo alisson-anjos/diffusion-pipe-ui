@@ -11,12 +11,12 @@ conda activate pyenv
 
 REPO_URL_UI=${REPO_URL_UI:-"https://github.com/alisson-anjos/diffusion-pipe-ui"}
 REPO_BRANCH_UI=${REPO_BRANCH_UI:-"main"}
-REPO_DIR_UI=${REPO_DIR_UI:-"/workspace/app/diffusion-pipe-ui"}
+REPO_DIR_UI=${REPO_DIR_UI:-"/workspace/diffusion-pipe-ui"}
 
 # Clone repository if not present
 if [ ! -d "$REPO_DIR_UI/.git" ]; then
-    echo "Cloning repository $REPO_URL_UI with submodules..."
-    git clone --recurse-submodules --branch $REPO_BRANCH_UI $REPO_URL_UI $REPO_DIR_UI
+    echo "Cloning repository $REPO_URL_UI..."
+    git clone --branch $REPO_BRANCH_UI $REPO_URL_UI $REPO_DIR_UI
 fi
 
 if [ ! -f "$INIT_MARKER" ]; then
@@ -24,7 +24,7 @@ if [ ! -f "$INIT_MARKER" ]; then
 
     REPO_URL=${REPO_URL:-"https://github.com/tdrussell/diffusion-pipe"}
     REPO_BRANCH=${REPO_BRANCH:-"main"}
-    REPO_DIR=${REPO_DIR:-"/workspace/app/diffusion-pipe"}
+    REPO_DIR=${REPO_DIR:-"/workspace/diffusion-pipe"}
 
     # Clone repository if not present
     if [ ! -d "$REPO_DIR/.git" ]; then
@@ -88,4 +88,4 @@ else
     echo "Container already initialized. Skipping first-time setup."
 fi
 
-exec python /workspace/app/diffusion_pipe_ui/main.py
+exec python /workspace/diffusion-pipe-ui/diffusion_pipe_ui/main.py
