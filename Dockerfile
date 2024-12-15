@@ -6,7 +6,7 @@ ARG GRADIO_PORT=7860
 
 FROM $DOCKER_FROM AS base
 
-WORKDIR /workspace/app
+WORKDIR /workspace
 
 # Environment variables
 ENV DEBIAN_FRONTEND=noninteractive
@@ -47,8 +47,6 @@ ARG CUDA="124"
 RUN $CONDA_DIR/bin/conda run -n pyenv \
     pip install torch==$PYTORCH torchvision torchaudio --index-url https://download.pytorch.org/whl/cu$CUDA
 
-WORKDIR /workspace
-
 # Copy Poetry configuration files
 COPY pyproject.toml poetry.lock* /workspace/
 
@@ -66,7 +64,7 @@ apt-get install -y nginx
 COPY default /etc/nginx/sites-available/default
 
 # Add Jupyter Notebook
-RUN pip3 install jupyterlab
+RUN pip3 install jupyterlab nodejs
 EXPOSE 8888
 
 COPY poetry.lock pyproject.toml /workspace/

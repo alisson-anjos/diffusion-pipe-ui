@@ -442,7 +442,7 @@ def build_interface():
                     label="Upload Images (.jpg, .png, .gif, .bmp, .webp), Videos (.mp4), Captions (.txt) or a ZIP archive",
                     file_types=[".jpg", ".png", ".gif", ".bmp", ".webp", ".mp4", ".txt", ".zip"],
                     file_count="multiple",
-                    type="file",
+                    type="filepath",
                     interactive=True
                 )
                 upload_status = gr.Textbox(label="Upload Status", interactive=False)
