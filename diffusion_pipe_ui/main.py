@@ -33,7 +33,7 @@ MAX_MEDIA = 50
 # Determine if running on Runpod by checking the environment variable
 IS_RUNPOD = os.getenv("IS_RUNPOD", "false").lower() == "true"
 
-# Maximum upload size in bytes (Gradio expects max_file_size in MB)
+# Maximum upload size in MB (Gradio expects max_file_size in MB)
 MAX_UPLOAD_SIZE_MB = 500 if IS_RUNPOD else None  # 500MB or no limit
 
 # -----------------------------
@@ -64,12 +64,12 @@ def generate_unique_filename(base_name):
 def create_dataset_config(dataset_path, num_repeats, resolutions, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets):
     """Create and save the dataset configuration in TOML format."""
     dataset_config = {
-        "resolutions": resolutions,  # Uses the provided list of resolutions
+        "resolutions": resolutions,
         "enable_ar_bucket": enable_ar_bucket,
         "min_ar": min_ar,
         "max_ar": max_ar,
         "num_ar_buckets": num_ar_buckets,
-        "frame_buckets": frame_buckets,  # Uses the provided frame_buckets
+        "frame_buckets": frame_buckets,
         "directory": [
             {
                 "path": dataset_path,
@@ -403,7 +403,7 @@ def download_dataset_action(dataset_dir, num_repeats, resolutions_input, enable_
         if not isinstance(resolutions, list) or not all(isinstance(i, int) for i in resolutions):
             raise ValueError
     except:
-        # If parsing fails, use default value or return error
+        # If parsing fails, use default value
         resolutions = [512]  # Default value
     try:
         # Parse frame_buckets
@@ -411,7 +411,7 @@ def download_dataset_action(dataset_dir, num_repeats, resolutions_input, enable_
         if not isinstance(frame_buckets, list) or not all(isinstance(i, int) for i in frame_buckets):
             raise ValueError
     except:
-        # If parsing fails, use default value or return error
+        # If parsing fails, use default value
         frame_buckets = [1, 33, 65]  # Default value
     create_dataset_config(dataset_dir, num_repeats, resolutions, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets)
     return download_dataset_config_zip(dataset_dir)
@@ -447,7 +447,7 @@ def build_interface():
                     interactive=True
                 )
                 upload_status = gr.Textbox(label="Upload Status", interactive=False)
-                finalize_button = gr.Button("Finalize Dataset")
+                finalize_button = gr.Button("Finalize Dataset", visible=False)  # Initially hidden
                 dataset_path_display = gr.Textbox(label="Current Dataset Path", interactive=False)
 
         # Container for selecting existing dataset
@@ -460,44 +460,46 @@ def build_interface():
                 )
                 selected_dataset_display = gr.Textbox(label="Selected Dataset Path", interactive=False)
 
-        # Update visibility based on dataset_option
+        # Function to toggle visibility of containers based on dataset option
         def toggle_dataset_option(option):
             if option == "Create New Dataset":
                 return (
-                    gr.Row.update(visible=True),
-                    gr.Row.update(visible=False)
+                    gr.update(visible=True),
+                    gr.update(visible=False)
                 )
             else:
                 return (
-                    gr.Row.update(visible=False),
-                    gr.Row.update(visible=True)
+                    gr.update(visible=False),
+                    gr.update(visible=True)
                 )
 
+        # Event handler for dataset_option change
         dataset_option.change(
             fn=toggle_dataset_option,
             inputs=dataset_option,
             outputs=[create_new_container, select_existing_container]
         )
 
-        # Logic to handle dataset creation
+        # Functions to handle dataset creation and uploads
         def handle_start_dataset():
-            return upload_dataset([], None, "start")
+            dataset_path, message = upload_dataset([], None, "start")
+            return dataset_path, message, gr.update(visible=False), gr.update(visible=True)
 
         def handle_upload(files, current_dataset):
             return upload_dataset(files, current_dataset, "add")
 
         def handle_finalize(current_dataset):
             message, dataset = finalize_dataset(current_dataset)
-            return message, dataset
+            return message, dataset, gr.update(visible=True), gr.update(visible=False)
 
         # State to keep track of the current dataset being created
         current_dataset_state = gr.State(None)
 
-        # Start New Dataset
+        # Start New Dataset Button
         start_dataset_button.click(
             fn=handle_start_dataset,
             inputs=None,
-            outputs=[dataset_path_display, upload_status]
+            outputs=[dataset_path_display, upload_status, start_dataset_button, finalize_button]
         )
 
         # Upload Files
@@ -508,11 +510,11 @@ def build_interface():
             queue=True
         )
 
-        # Finalize Dataset
+        # Finalize Dataset Button
         finalize_button.click(
             fn=handle_finalize,
             inputs=current_dataset_state,
-            outputs=[upload_status, current_dataset_state]
+            outputs=[upload_status, current_dataset_state, start_dataset_button, finalize_button]
         )
 
         # Select Existing Dataset
@@ -539,7 +541,7 @@ def build_interface():
             height="auto"
         )
 
-        # Display media in gallery based on dataset selection
+        # Function to update the gallery based on dataset selection
         def update_gallery(option, new_dataset, selected_dataset):
             if option == "Create New Dataset" and new_dataset:
                 return show_media(new_dataset)
@@ -547,18 +549,21 @@ def build_interface():
                 return show_media(selected_dataset)
             return []
 
+        # Update gallery when dataset option changes
         dataset_option.change(
             fn=update_gallery,
             inputs=[dataset_option, dataset_path_display, selected_dataset_display],
             outputs=gallery
         )
 
+        # Update gallery when current dataset path changes
         dataset_path_display.change(
             fn=lambda path: show_media(path),
             inputs=dataset_path_display,
             outputs=gallery
         )
 
+        # Update gallery when selected dataset path changes
         selected_dataset_display.change(
             fn=lambda path: show_media(path),
             inputs=selected_dataset_display,
@@ -821,7 +826,7 @@ def build_interface():
                 message = stop_training()
                 logs += message + "\n"
                 is_training = False
-                return (logs, is_training, "Start Training")
+                return (logs, is_training, gr.update(value="Start Training"))
             else:
                 # Determine the dataset path based on selection
                 if dataset_option_selected == "Create New Dataset":
@@ -832,8 +837,8 @@ def build_interface():
                 if not dataset_path or not os.path.exists(dataset_path):
                     message = "Please upload a valid dataset before starting training."
                     logs += message + "\n"
-                    return (logs, is_training, "Start Training")
-                
+                    return (logs, is_training, gr.update(value="Start Training"))
+
                 # Parse resolutions as list of integers
                 try:
                     # Try to parse using JSON
@@ -844,7 +849,7 @@ def build_interface():
                     # If parsing fails, return error
                     message = "Resolutions must be a list of integers. Example: [512] or [512, 768, 1024]"
                     logs += message + "\n"
-                    return (logs, is_training, "Start Training")
+                    return (logs, is_training, gr.update(value="Start Training"))
 
                 # Parse frame_buckets as list of integers
                 try:
@@ -855,7 +860,7 @@ def build_interface():
                     # If parsing fails, return error
                     message = "Frame Buckets must be a list of integers. Example: [1, 33, 65]"
                     logs += message + "\n"
-                    return (logs, is_training, "Start Training")
+                    return (logs, is_training, gr.update(value="Start Training"))
 
                 # Start training
                 is_training = True
@@ -901,7 +906,7 @@ def build_interface():
                 )
                 for log in generator:
                     logs += log + "\n"
-                    yield (logs, is_training, "Stop Training")
+                    yield (logs, is_training, gr.update(value="Stop Training"))
 
         train_button.click(
             fn=toggle_training,
