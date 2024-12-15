@@ -15,7 +15,7 @@ import json
 # Configuration and Constants
 # -----------------------------
 
-# Working directories
+# Working directories (Preserved original path formats)
 MODEL_DIR = "/workspace/models"
 BASE_DATASET_DIR = "/workspace/datasets"
 OUTPUT_DIR = "/workspace/output"
@@ -60,9 +60,10 @@ def generate_unique_filename(base_name):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"{base_name}_{timestamp}.toml"
 
-def create_dataset_config(dataset_path, num_repeats, resolutions, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets):
+def create_dataset_config(dataset_path, dataset_name, num_repeats, resolutions, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets):
     """Create and save the dataset configuration in TOML format."""
     dataset_config = {
+        "dataset_name": dataset_name,
         "resolutions": resolutions,
         "enable_ar_bucket": enable_ar_bucket,
         "min_ar": min_ar,
@@ -175,51 +176,53 @@ def train_lora(dataset_path, output_dir, epochs, batch_size, lr, save_every, eva
 
         # Create configurations
         dataset_config_path = create_dataset_config(
-            dataset_path, 
-            num_repeats, 
-            resolutions, 
-            enable_ar_bucket, 
-            min_ar, 
-            max_ar, 
-            num_ar_buckets, 
-            frame_buckets
+            dataset_path=dataset_path, 
+            dataset_name=os.path.basename(dataset_path),
+            num_repeats=num_repeats, 
+            resolutions=resolutions, 
+            enable_ar_bucket=enable_ar_bucket, 
+            min_ar=min_ar, 
+            max_ar=max_ar, 
+            num_ar_buckets=num_ar_buckets, 
+            frame_buckets=frame_buckets
         )
         training_config_path = create_training_config(
-            output_dir, 
-            dataset_config_path, 
-            epochs, 
-            batch_size, 
-            lr, 
-            save_every, 
-            eval_every, 
-            rank, 
-            dtype,
-            transformer_path, 
-            vae_path, 
-            llm_path, 
-            clip_path, 
-            optimizer_type, 
-            betas, 
-            weight_decay, 
-            eps,
-            gradient_accumulation_steps,
-            gradient_clipping,
-            warmup_steps,
-            eval_before_first_step,
-            eval_micro_batch_size_per_gpu,
-            eval_gradient_accumulation_steps,
-            checkpoint_every_n_minutes,
-            activation_checkpointing,
-            partition_method,
-            save_dtype,
-            caching_batch_size,
-            steps_per_print,
-            video_clip_mode
+            output_dir=output_dir, 
+            dataset_path=dataset_config_path, 
+            epochs=epochs, 
+            batch_size=batch_size, 
+            lr=lr, 
+            save_every=save_every, 
+            eval_every=eval_every, 
+            rank=rank, 
+            dtype=dtype,
+            transformer_path=transformer_path, 
+            vae_path=vae_path, 
+            llm_path=llm_path, 
+            clip_path=clip_path, 
+            optimizer_type=optimizer_type, 
+            betas=betas, 
+            weight_decay=weight_decay, 
+            eps=eps,
+            gradient_accumulation_steps=gradient_accumulation_steps,
+            gradient_clipping=gradient_clipping,
+            warmup_steps=warmup_steps,
+            eval_before_first_step=eval_before_first_step,
+            eval_micro_batch_size_per_gpu=eval_micro_batch_size_per_gpu,
+            eval_gradient_accumulation_steps=eval_gradient_accumulation_steps,
+            checkpoint_every_n_minutes=checkpoint_every_n_minutes,
+            activation_checkpointing=activation_checkpointing,
+            partition_method=partition_method,
+            save_dtype=save_dtype,
+            caching_batch_size=caching_batch_size,
+            steps_per_print=steps_per_print,
+            video_clip_mode=video_clip_mode
         )
 
         # Training command (replace with the actual command)
         conda_activate_path = "/opt/conda/etc/profile.d/conda.sh"
         conda_env_name = "pyenv"
+
 
         command = (
             f"bash -c 'source {conda_activate_path} && "
@@ -266,48 +269,52 @@ def get_existing_datasets():
     datasets = [d for d in os.listdir(BASE_DATASET_DIR) if os.path.isdir(os.path.join(BASE_DATASET_DIR, d))]
     return datasets
 
-def upload_dataset(files, current_dataset, action):
+def upload_dataset(files, current_dataset, action, dataset_name=None):
     """
     Handle uploaded dataset files and store them in a unique directory.
     Action can be 'start' (initialize a new dataset) or 'add' (add files to current dataset).
     """
     if action == "start":
-        # Start a new dataset
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        dataset_dir = os.path.join(BASE_DATASET_DIR, f"dataset_{timestamp}")
+        if not dataset_name:
+            return current_dataset, "Please provide a dataset name."
+        # Ensure the dataset name does not contain invalid characters
+        dataset_name = "".join(c for c in dataset_name if c.isalnum() or c in (' ', '_', '-')).rstrip()
+        dataset_dir = BASE_DATASET_DIR + "\\" + dataset_name  # Preserved original path format
+        if os.path.exists(dataset_dir):
+            return current_dataset, f"Dataset '{dataset_name}' already exists. Please choose a different name."
         os.makedirs(dataset_dir, exist_ok=True)
         return dataset_dir, f"Started new dataset: {dataset_dir}"
-
+    
     if not current_dataset:
         return current_dataset, "Please start a new dataset before uploading files."
-
+    
     if not files:
         return current_dataset, "No files uploaded."
-
+    
     # Calculate the total size of the current dataset
     total_size = 0
     for root, dirs, files_in_dir in os.walk(current_dataset):
         for f in files_in_dir:
             fp = os.path.join(root, f)
             total_size += os.path.getsize(fp)
-
+    
     # Calculate the size of the new files
     new_files_size = 0
     for file in files:
         if IS_RUNPOD:
             new_files_size += os.path.getsize(file.name)
-
+    
     # Check if adding these files would exceed the limit
     if IS_RUNPOD and (total_size + new_files_size) > MAX_UPLOAD_SIZE_MB * 1024 * 1024:
-        return current_dataset, f"Upload would exceed the 500MB limit on Runpod. Please upload smaller files or finalize the dataset."
-
+        return current_dataset, f"Upload would exceed the {MAX_UPLOAD_SIZE_MB}MB limit on Runpod. Please upload smaller files or finalize the dataset."
+    
     uploaded_files = []
-
+    
     for file in files:
         file_path = file.name
         filename = os.path.basename(file_path)
-        dest_path = os.path.join(current_dataset, filename)
-
+        dest_path = current_dataset + "\\" + filename  # Preserved original path format
+    
         if zipfile.is_zipfile(file_path):
             # If the file is a ZIP, extract its contents
             try:
@@ -325,14 +332,14 @@ def upload_dataset(files, current_dataset, action):
             else:
                 uploaded_files.append(f"{filename} (unsupported format)")
                 continue
-
+    
     return current_dataset, f"Uploaded files: {', '.join(uploaded_files)}"
 
 def finalize_dataset(current_dataset):
     """Finalize the dataset creation."""
     if not current_dataset or not os.path.exists(current_dataset):
         return "No dataset to finalize.", current_dataset
-    # Here you can add any finalization steps if needed
+    # Add any finalization steps here if necessary
     return f"Dataset {current_dataset} has been finalized.", current_dataset
 
 def show_media(dataset_dir):
@@ -340,17 +347,20 @@ def show_media(dataset_dir):
     if not dataset_dir or not os.path.exists(dataset_dir):
         # Return an empty list if the dataset_dir is invalid
         return []
-
+    
     # List of image and .mp4 video files
     media_files = [
         f for f in os.listdir(dataset_dir)
         if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.mp4'))
     ]
-
-    media_paths = [os.path.join(dataset_dir, f) for f in media_files[:MAX_MEDIA]]
-
-    # Return the list of media paths for gr.Gallery
-    return media_paths
+    
+    # Get absolute paths of the files
+    media_paths = [os.path.abspath(os.path.join(dataset_dir, f)) for f in media_files[:MAX_MEDIA]]
+    
+    # Check if files exist
+    existing_media = [f for f in media_paths if os.path.exists(f)]
+    
+    return existing_media
 
 # -----------------------------
 # Download Functions
@@ -358,7 +368,7 @@ def show_media(dataset_dir):
 
 def download_output_zip():
     """Create a zip file with the training outputs for download."""
-    zip_filename = "output.zip"  # Relative path; placed in the current working directory
+    zip_filename = "output.zip"  # ZIP file name
     zip_path = os.path.join(os.getcwd(), zip_filename)
     if os.path.exists(zip_path):
         os.remove(zip_path)
@@ -372,7 +382,7 @@ def download_output_zip():
 
 def download_dataset_config_zip(dataset_dir):
     """Create a zip file with the dataset and configurations for download."""
-    zip_filename = "dataset_configs.zip"  # Relative path; placed in the current working directory
+    zip_filename = "dataset_configs.zip"  # ZIP file name
     zip_path = os.path.join(os.getcwd(), zip_filename)
     if os.path.exists(zip_path):
         os.remove(zip_path)
@@ -412,7 +422,17 @@ def download_dataset_action(dataset_dir, num_repeats, resolutions_input, enable_
     except:
         # If parsing fails, use default value
         frame_buckets = [1, 33, 65]  # Default value
-    create_dataset_config(dataset_dir, num_repeats, resolutions, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets)
+    create_dataset_config(
+        dataset_path=dataset_dir, 
+        dataset_name=os.path.basename(dataset_dir), 
+        num_repeats=num_repeats, 
+        resolutions=resolutions, 
+        enable_ar_bucket=enable_ar_bucket, 
+        min_ar=min_ar, 
+        max_ar=max_ar, 
+        num_ar_buckets=num_ar_buckets, 
+        frame_buckets=frame_buckets
+    )
     return download_dataset_config_zip(dataset_dir)
 
 # -----------------------------
@@ -434,10 +454,16 @@ def build_interface():
                 label="Dataset Option"
             )
 
-        # Container for dataset creation
+        # Container for creating dataset
         with gr.Row(visible=True, elem_id="create_new_dataset_container") as create_new_container:
             with gr.Column():
-                start_dataset_button = gr.Button("Start New Dataset")
+                with gr.Row():
+                    dataset_name_input = gr.Textbox(
+                        label="Dataset Name",
+                        placeholder="Enter your dataset name",
+                        interactive=True
+                    )
+                start_dataset_button = gr.Button("Start New Dataset", interactive=False)  # Initially disabled
                 upload_files = gr.File(
                     label="Upload Images (.jpg, .png, .gif, .bmp, .webp), Videos (.mp4), Captions (.txt) or a ZIP archive",
                     file_types=[".jpg", ".png", ".gif", ".bmp", ".webp", ".mp4", ".txt", ".zip"],
@@ -454,36 +480,63 @@ def build_interface():
         with gr.Row(visible=False, elem_id="select_existing_dataset_container") as select_existing_container:
             with gr.Column():
                 existing_datasets = gr.Dropdown(
-                    choices=get_existing_datasets(),
+                    choices=[],  # Initially empty; will be updated dynamically
                     label="Select Existing Dataset",
                     interactive=True
                 )
                 selected_dataset_display = gr.Textbox(label="Selected Dataset Path", interactive=False)
 
-        # Function to toggle visibility of containers based on dataset option
+        # Function to toggle the visibility of containers based on selected option
         def toggle_dataset_option(option):
             if option == "Create New Dataset":
+                # When creating a new dataset, show creation container and hide selection container
                 return (
-                    gr.update(visible=True),
-                    gr.update(visible=False)
+                    gr.update(visible=True),    # Show create_new_container
+                    gr.update(visible=False),   # Hide select_existing_container
+                    gr.update(choices=[]),      # Clear existing_datasets Dropdown
                 )
             else:
+                # When selecting an existing dataset, hide creation container and show selection container
+                datasets = get_existing_datasets()
                 return (
-                    gr.update(visible=False),
-                    gr.update(visible=True)
+                    gr.update(visible=False),   # Hide create_new_container
+                    gr.update(visible=True),    # Show select_existing_container
+                    gr.update(choices=datasets if datasets else []),  # Update Dropdown
                 )
 
-        # Event handler for dataset_option change
+        # Event handler for dataset option change
         dataset_option.change(
             fn=toggle_dataset_option,
             inputs=dataset_option,
-            outputs=[create_new_container, select_existing_container]
+            outputs=[create_new_container, select_existing_container, existing_datasets]
         )
 
         # Functions to handle dataset creation and uploads
-        def handle_start_dataset():
-            dataset_path, message = upload_dataset([], None, "start")
-            return dataset_path, message, gr.update(visible=False), gr.update(visible=True)
+        def handle_start_dataset(dataset_name):
+            if not dataset_name.strip():
+                return (
+                    gr.update(value="Please provide a dataset name."), 
+                    gr.update(value=None), 
+                    gr.update(visible=True),   # Keep button visible
+                    gr.update(visible=False), 
+                    gr.update(visible=False)
+                )
+            dataset_path, message = upload_dataset([], None, "start", dataset_name=dataset_name)
+            if "already exists" in message:
+                return (
+                    gr.update(value=message), 
+                    gr.update(value=None), 
+                    gr.update(visible=True),   # Keep button visible
+                    gr.update(visible=False), 
+                    gr.update(visible=False)
+                )
+            return (
+                gr.update(value=message), 
+                dataset_path, 
+                gr.update(visible=False), 
+                gr.update(visible=True), 
+                gr.update(visible=True)
+            )
 
         def handle_upload(files, current_dataset):
             updated_dataset, message = upload_dataset(files, current_dataset, "add")
@@ -491,39 +544,63 @@ def build_interface():
 
         def handle_finalize(current_dataset):
             message, dataset = finalize_dataset(current_dataset)
-            return message, dataset, gr.update(visible=True), gr.update(visible=False)
+            update_gallery(dataset_option.value, dataset, selected_dataset_display.value)
+            # After finalizing, update the dataset_path_display and show the gallery
+            return (
+                gr.update(value=message), 
+                dataset, 
+                gr.update(visible=True), 
+                gr.update(visible=False), 
+                gr.update(visible=False)
+            )
+
+        # Function to enable/disable the "Start New Dataset" button based on input
+        def toggle_start_button(name):
+            if name.strip():
+                return gr.update(interactive=True)
+            else:
+                return gr.update(interactive=False)
+
+        # Event listener to enable/disable "Start New Dataset" button
+        dataset_name_input.change(
+            fn=toggle_start_button,
+            inputs=dataset_name_input,
+            outputs=start_dataset_button
+        )
 
         # State to keep track of the current dataset being created
         current_dataset_state = gr.State(None)
 
-        # Start New Dataset Button
+        # Button to start new dataset
         start_dataset_button.click(
             fn=handle_start_dataset,
-            inputs=None,
-            outputs=[dataset_path_display, upload_status, start_dataset_button, finalize_button]
+            inputs=dataset_name_input,
+            outputs=[upload_status, current_dataset_state, start_dataset_button, finalize_button, upload_files]
         )
 
-        # Upload Files
+        # File uploads
         upload_files.upload(
             fn=lambda files, current_dataset: handle_upload(files, current_dataset),
             inputs=[upload_files, current_dataset_state],
-            outputs=[dataset_path_display, upload_status],
+            outputs=[current_dataset_state, upload_status],
             queue=True
         )
 
-        # Finalize Dataset Button
+        # Button to finalize dataset
         finalize_button.click(
             fn=handle_finalize,
             inputs=current_dataset_state,
-            outputs=[upload_status, current_dataset_state, start_dataset_button, finalize_button]
+            outputs=[upload_status, current_dataset_state, start_dataset_button, finalize_button, upload_files]
         )
 
-        # Select Existing Dataset
+        # Select existing dataset
         def handle_select_existing(selected_dataset):
             if selected_dataset:
-                return selected_dataset
+                dataset_path = BASE_DATASET_DIR + "\\" + selected_dataset  # Preserved original path format
+                return dataset_path
             return ""
 
+        # Event listener for Dropdown 'change' to update selected dataset path
         existing_datasets.change(
             fn=handle_select_existing,
             inputs=existing_datasets,
@@ -550,21 +627,21 @@ def build_interface():
                 return show_media(selected_dataset)
             return []
 
-        # Update gallery when dataset option changes
+        # Update gallery when the dataset option changes
         dataset_option.change(
             fn=update_gallery,
-            inputs=[dataset_option, dataset_path_display, selected_dataset_display],
+            inputs=[dataset_option, current_dataset_state, selected_dataset_display],
             outputs=gallery
         )
 
-        # Update gallery when current dataset path changes
+        # Update gallery when the current dataset path changes
         dataset_path_display.change(
             fn=lambda path: show_media(path),
             inputs=dataset_path_display,
             outputs=gallery
         )
 
-        # Update gallery when selected dataset path changes
+        # Update gallery when the selected dataset path changes
         selected_dataset_display.change(
             fn=lambda path: show_media(path),
             inputs=selected_dataset_display,
@@ -574,7 +651,7 @@ def build_interface():
         # 3. Step 2: Training
         gr.Markdown("### Step 2: Training\nConfigure your training parameters and start or stop the training process.")
         with gr.Column():
-            # Output Directory
+            # Output directory
             output_dir_box = gr.Textbox(
                 label="Output Directory",
                 value=OUTPUT_DIR,
@@ -582,7 +659,7 @@ def build_interface():
                 interactive=False
             )
 
-            # Training Parameters
+            # Training parameters
             gr.Markdown("#### Training Parameters")
             with gr.Row():
                 with gr.Column(scale=1):
@@ -628,7 +705,7 @@ def build_interface():
                         info="Micro-batch accumulation steps"
                     )
 
-            # Dataset Configuration Fields
+            # Dataset configuration fields
             gr.Markdown("#### Dataset Configuration")
             with gr.Row():
                 enable_ar_bucket = gr.Checkbox(
@@ -661,7 +738,7 @@ def build_interface():
                 info="Frame buckets as a JSON list. Example: [1, 33, 65]"
             )
 
-            # Dataset Duplication and Resolutions
+            # Dataset duplication and resolutions
             with gr.Row():
                 with gr.Column(scale=1):
                     num_repeats = gr.Number(
@@ -676,7 +753,7 @@ def build_interface():
                         info="Resolutions to train on, given as a list. Example: [512] or [512, 768, 1024]"
                     )
 
-            # Optimizer Parameters
+            # Optimizer parameters
             gr.Markdown("#### Optimizer Parameters")
             with gr.Row():
                 with gr.Column(scale=1):
@@ -703,7 +780,7 @@ def build_interface():
                         info="Epsilon for the optimizer"
                     )
 
-            # Additional Training Parameters
+            # Additional training parameters
             gr.Markdown("#### Additional Training Parameters")
             with gr.Row():
                 with gr.Column(scale=1):
@@ -771,7 +848,7 @@ def build_interface():
                         info="Mode for video clipping (e.g., single_middle)"
                     )
 
-            # Model Paths
+            # Model paths
             gr.Markdown("#### Model Paths")
             with gr.Row():
                 with gr.Column(scale=1):
@@ -796,7 +873,7 @@ def build_interface():
                         info="Path to the CLIP model directory."
                     )
 
-            # Start Training Button and Log Box
+            # Button to start training and log box
             with gr.Row():
                 with gr.Column(scale=1):
                     train_button = gr.Button("Start Training")
@@ -812,7 +889,7 @@ def build_interface():
         # Initialize States
         is_training_state = gr.State(False)
         logs_state = gr.State("")
-        current_dataset_creation = gr.State(None)
+        # current_dataset_creation = gr.State(None)  # Not used
 
         # 4. Training Button Action
         def toggle_training(is_training, logs, dataset_option_selected, new_dataset, selected_dataset, output_dir_val, epochs_val, batch_size_val, lr_val, save_every_val, eval_every_val,
@@ -842,7 +919,7 @@ def build_interface():
 
                 # Parse resolutions as list of integers
                 try:
-                    # Try to parse using JSON
+                    # Try parsing using JSON
                     resolutions = json.loads(resolutions_input_val)
                     if not isinstance(resolutions, list) or not all(isinstance(i, int) for i in resolutions):
                         raise ValueError
@@ -867,43 +944,43 @@ def build_interface():
                 is_training = True
                 logs = ""
                 generator = train_lora(
-                    dataset_path, 
-                    output_dir_val, 
-                    epochs_val, 
-                    batch_size_val, 
-                    lr_val, 
-                    save_every_val, 
-                    eval_every_val,
-                    rank_val, 
-                    dtype_val, 
-                    transformer_path_val, 
-                    vae_path_val, 
-                    llm_path_val, 
-                    clip_path_val, 
-                    optimizer_type_val,
-                    betas_val, 
-                    weight_decay_val, 
-                    eps_val, 
-                    gradient_accumulation_steps_val, 
-                    num_repeats_val, 
-                    resolutions,
-                    enable_ar_bucket_val, 
-                    min_ar_val, 
-                    max_ar_val, 
-                    num_ar_buckets_val, 
-                    frame_buckets_parsed,
-                    gradient_clipping_val,
-                    warmup_steps_val,
-                    eval_before_first_step_val,
-                    eval_micro_batch_size_per_gpu_val,
-                    eval_gradient_accumulation_steps_val,
-                    checkpoint_every_n_minutes_val,
-                    activation_checkpointing_val,
-                    partition_method_val,
-                    save_dtype_val,
-                    caching_batch_size_val,
-                    steps_per_print_val,
-                    video_clip_mode_val
+                    dataset_path=dataset_path, 
+                    output_dir=output_dir_val, 
+                    epochs=epochs_val, 
+                    batch_size=batch_size_val, 
+                    lr=lr_val, 
+                    save_every=save_every_val, 
+                    eval_every=eval_every_val,
+                    rank=rank_val, 
+                    dtype=dtype_val, 
+                    transformer_path=transformer_path_val, 
+                    vae_path=vae_path_val, 
+                    llm_path=llm_path_val, 
+                    clip_path=clip_path_val, 
+                    optimizer_type=optimizer_type_val,
+                    betas=betas_val, 
+                    weight_decay=weight_decay_val, 
+                    eps=eps_val, 
+                    gradient_accumulation_steps=gradient_accumulation_steps_val, 
+                    num_repeats=num_repeats_val, 
+                    resolutions=resolutions,
+                    enable_ar_bucket=enable_ar_bucket_val, 
+                    min_ar=min_ar_val, 
+                    max_ar=max_ar_val, 
+                    num_ar_buckets=num_ar_buckets_val, 
+                    frame_buckets=frame_buckets_parsed,
+                    gradient_clipping=gradient_clipping_val,
+                    warmup_steps=warmup_steps_val,
+                    eval_before_first_step=eval_before_first_step_val,
+                    eval_micro_batch_size_per_gpu=eval_micro_batch_size_per_gpu_val,
+                    eval_gradient_accumulation_steps=eval_gradient_accumulation_steps_val,
+                    checkpoint_every_n_minutes=checkpoint_every_n_minutes_val,
+                    activation_checkpointing=activation_checkpointing_val,
+                    partition_method=partition_method_val,
+                    save_dtype=save_dtype_val,
+                    caching_batch_size=caching_batch_size_val,
+                    steps_per_print=steps_per_print_val,
+                    video_clip_mode=video_clip_mode_val
                 )
                 for log in generator:
                     logs += log + "\n"
@@ -913,7 +990,7 @@ def build_interface():
             fn=toggle_training,
             inputs=[
                 is_training_state, logs_state,
-                dataset_option, dataset_path_display, selected_dataset_display,
+                dataset_option, current_dataset_state, selected_dataset_display,
                 output_dir_box, epochs, batch_size, lr, save_every, eval_every,
                 rank, dtype, transformer_path, vae_path, llm_path, clip_path,
                 optimizer_type, betas, weight_decay, eps, gradient_accumulation_steps,
@@ -972,7 +1049,7 @@ if __name__ == "__main__":
         "server_port": 7860,
         "auth": None,
         "share": False,
-        "allowed_paths": ["/workspace", ".", "/"]
+        "allowed_paths": [BASE_DATASET_DIR, CONFIG_HISTORY_DIR, OUTPUT_DIR, MODEL_DIR, "."]
     }
 
     if IS_RUNPOD:
