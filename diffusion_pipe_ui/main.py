@@ -8,7 +8,6 @@ import toml
 from datetime import datetime
 import threading
 import zipfile
-import signal
 import psutil
 import json
 
@@ -270,7 +269,7 @@ def get_existing_datasets():
 def upload_dataset(files, current_dataset, action):
     """
     Handle uploaded dataset files and store them in a unique directory.
-    Action can be 'add' (add files to current dataset) or 'finalize' (finalize the dataset).
+    Action can be 'start' (initialize a new dataset) or 'add' (add files to current dataset).
     """
     if action == "start":
         # Start a new dataset
@@ -444,7 +443,8 @@ def build_interface():
                     file_types=[".jpg", ".png", ".gif", ".bmp", ".webp", ".mp4", ".txt", ".zip"],
                     file_count="multiple",
                     type="filepath",  # Changed from "file" to "filepath"
-                    interactive=True
+                    interactive=True,
+                    visible=False  # Initially hidden
                 )
                 upload_status = gr.Textbox(label="Upload Status", interactive=False)
                 finalize_button = gr.Button("Finalize Dataset", visible=False)  # Initially hidden
@@ -486,7 +486,8 @@ def build_interface():
             return dataset_path, message, gr.update(visible=False), gr.update(visible=True)
 
         def handle_upload(files, current_dataset):
-            return upload_dataset(files, current_dataset, "add")
+            updated_dataset, message = upload_dataset(files, current_dataset, "add")
+            return updated_dataset, message
 
         def handle_finalize(current_dataset):
             message, dataset = finalize_dataset(current_dataset)
