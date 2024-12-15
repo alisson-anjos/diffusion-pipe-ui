@@ -34,7 +34,7 @@ MAX_MEDIA = 50
 IS_RUNPOD = os.getenv("IS_RUNPOD", "false").lower() == "true"
 
 # Maximum upload size in bytes
-MAX_UPLOAD_SIZE = 500 * 1024 * 1024 if IS_RUNPOD else 2 * 1024 * 1024 * 1024  # 500MB or 2GB
+MAX_UPLOAD_SIZE = 500 * 1024 * 1024 if IS_RUNPOD else None  # 500MB or no limit
 
 # -----------------------------
 # Training Process Management
@@ -225,7 +225,7 @@ def train_lora(dataset_path, output_dir, epochs, batch_size, lr, save_every, eva
         command = (
             f"bash -c 'source {conda_activate_path} && "
             f"conda activate {conda_env_name} && "
-            f"cd /workspace/diffusion-pipe && "
+            f"cd /diffusion-pipe && "
             f"NCCL_P2P_DISABLE=1 NCCL_IB_DISABLE=1 deepspeed --num_gpus=1 "
             f"train.py --deepspeed --config {training_config_path}'"
         )
@@ -272,18 +272,18 @@ def upload_dataset(files, current_dataset, action):
     Handle uploaded dataset files and store them in a unique directory.
     Action can be 'add' (add files to current dataset) or 'finalize' (finalize the dataset).
     """
-    if not files:
-        return current_dataset, "No files uploaded."
-
     if action == "start":
         # Start a new dataset
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         dataset_dir = os.path.join(BASE_DATASET_DIR, f"dataset_{timestamp}")
         os.makedirs(dataset_dir, exist_ok=True)
         return dataset_dir, f"Started new dataset: {dataset_dir}"
-    
+
     if not current_dataset:
         return current_dataset, "Please start a new dataset before uploading files."
+
+    if not files:
+        return current_dataset, "No files uploaded."
 
     # Calculate the total size of the current dataset
     total_size = 0
@@ -295,8 +295,9 @@ def upload_dataset(files, current_dataset, action):
     # Calculate the size of the new files
     new_files_size = 0
     for file in files:
-        new_files_size += os.path.getsize(file.name)
-
+        if IS_RUNPOD:
+            new_files_size += os.path.getsize(file.name)
+    
     # Check if adding these files would exceed the limit
     if IS_RUNPOD and (total_size + new_files_size) > MAX_UPLOAD_SIZE:
         return current_dataset, f"Upload would exceed the 500MB limit on Runpod. Please upload smaller files or finalize the dataset."
@@ -442,7 +443,7 @@ def build_interface():
                     label="Upload Images (.jpg, .png, .gif, .bmp, .webp), Videos (.mp4), Captions (.txt) or a ZIP archive",
                     file_types=[".jpg", ".png", ".gif", ".bmp", ".webp", ".mp4", ".txt", ".zip"],
                     file_count="multiple",
-                    type="filepath",
+                    type="filepath",  # Changed from "file" to "filepath"
                     interactive=True
                 )
                 upload_status = gr.Textbox(label="Upload Status", interactive=False)
@@ -469,7 +470,7 @@ def build_interface():
         dataset_option.change(
             fn=toggle_dataset_option,
             inputs=dataset_option,
-            outputs=[gr.components.Component.update(), gr.components.Component.update()]
+            outputs=[gr.components.Row.update(visible=True), gr.components.Row.update(visible=True)]
         )
 
         # Initialize visibility
@@ -956,12 +957,19 @@ def build_interface():
 
 if __name__ == "__main__":
     demo = build_interface()
-    
-    demo.launch(
-        server_name="0.0.0.0",
-        server_port=7860,
-        auth=None,
-        share=False,
-        max_file_size=MAX_UPLOAD_SIZE,  # Set based on IS_RUNPOD
-        allowed_paths=["/workspace", ".", "/"]
-    )
+
+    # Adjust max_file_size based on IS_RUNPOD
+    launch_kwargs = {
+        "server_name": "0.0.0.0",
+        "server_port": 7860,
+        "auth": None,
+        "share": False,
+        "allowed_paths": ["/workspace", ".", "/"]
+    }
+
+    if IS_RUNPOD:
+        launch_kwargs["max_file_size"] = 500  # Gradio expects size in MB
+    else:
+        launch_kwargs["max_file_size"] = None  # No limit
+
+    demo.launch(**launch_kwargs)
