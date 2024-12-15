@@ -6,7 +6,7 @@ ARG GRADIO_PORT=7860
 
 FROM $DOCKER_FROM AS base
 
-WORKDIR /workspace
+WORKDIR /workspace/app
 
 # Environment variables
 ENV DEBIAN_FRONTEND=noninteractive
@@ -67,15 +67,12 @@ COPY default /etc/nginx/sites-available/default
 RUN pip3 install jupyterlab
 EXPOSE 8888
 
-# Copy all files
-COPY . /workspace
+COPY poetry.lock pyproject.toml /workspace/app/
 
-
-# Ensure that the entrypoint script is executable
-RUN chmod +x /workspace/entrypoint.sh
-RUN chmod +x /workspace/start.sh
+COPY --chmod=755 start.sh /start.sh
+COPY --chmod=755 entrypoint.sh /entrypoint.sh
 
 # Expose the Gradio port
 EXPOSE $GRADIO_PORT
 
-CMD [ "/workspace/start.sh" ]
+CMD [ "/start.sh" ]

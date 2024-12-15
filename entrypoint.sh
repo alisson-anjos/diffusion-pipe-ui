@@ -9,12 +9,22 @@ echo "DOWNLOAD_MODELS is: $DOWNLOAD_MODELS"
 source /opt/conda/etc/profile.d/conda.sh
 conda activate pyenv
 
+REPO_URL_UI=${REPO_URL_UI:-"https://github.com/alisson-anjos/diffusion-pipe-ui"}
+REPO_BRANCH_UI=${REPO_BRANCH_UI:-"main"}
+REPO_DIR_UI=${REPO_DIR_UI:-"/workspace/app/diffusion-pipe-ui"}
+
+# Clone repository if not present
+if [ ! -d "$REPO_DIR_UI/.git" ]; then
+    echo "Cloning repository $REPO_URL_UI with submodules..."
+    git clone --recurse-submodules --branch $REPO_BRANCH_UI $REPO_URL_UI $REPO_DIR_UI
+fi
+
 if [ ! -f "$INIT_MARKER" ]; then
     echo "First-time initialization..."
 
     REPO_URL=${REPO_URL:-"https://github.com/tdrussell/diffusion-pipe"}
     REPO_BRANCH=${REPO_BRANCH:-"main"}
-    REPO_DIR=${REPO_DIR:-"/diffusion-pipe"}
+    REPO_DIR=${REPO_DIR:-"/workspace/app/diffusion-pipe"}
 
     # Clone repository if not present
     if [ ! -d "$REPO_DIR/.git" ]; then
@@ -34,7 +44,7 @@ if [ ! -f "$INIT_MARKER" ]; then
 
     if [ "$DOWNLOAD_MODELS" = "true" ]; then
         echo "DOWNLOAD_MODELS is true, downloading models..."
-        MODEL_DIR="/models"
+        MODEL_DIR="/workspace/models"
         mkdir -p "$MODEL_DIR"
 
         # Clone llava-llama-3-8b-text-encoder-tokenizer repository
@@ -78,4 +88,4 @@ else
     echo "Container already initialized. Skipping first-time setup."
 fi
 
-exec python /workspace/diffusion_pipe_ui/main.py
+exec python /workspace/app/diffusion_pipe_ui/main.py

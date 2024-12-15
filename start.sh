@@ -39,6 +39,6 @@ echo "JupyterLab started"
 # fi
 
 # Execute the entrypoint script
-bash /workspace/entrypoint.sh
+bash /entrypoint.sh
 
 sleep infinity
