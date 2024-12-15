@@ -33,8 +33,8 @@ MAX_MEDIA = 50
 # Determine if running on Runpod by checking the environment variable
 IS_RUNPOD = os.getenv("IS_RUNPOD", "false").lower() == "true"
 
-# Maximum upload size in bytes
-MAX_UPLOAD_SIZE = 500 * 1024 * 1024 if IS_RUNPOD else None  # 500MB or no limit
+# Maximum upload size in bytes (Gradio expects max_file_size in MB)
+MAX_UPLOAD_SIZE_MB = 500 if IS_RUNPOD else None  # 500MB or no limit
 
 # -----------------------------
 # Training Process Management
@@ -297,9 +297,9 @@ def upload_dataset(files, current_dataset, action):
     for file in files:
         if IS_RUNPOD:
             new_files_size += os.path.getsize(file.name)
-    
+
     # Check if adding these files would exceed the limit
-    if IS_RUNPOD and (total_size + new_files_size) > MAX_UPLOAD_SIZE:
+    if IS_RUNPOD and (total_size + new_files_size) > MAX_UPLOAD_SIZE_MB * 1024 * 1024:
         return current_dataset, f"Upload would exceed the 500MB limit on Runpod. Please upload smaller files or finalize the dataset."
 
     uploaded_files = []
@@ -436,7 +436,7 @@ def build_interface():
             )
 
         # Container for dataset creation
-        with gr.Row(elem_id="create_new_dataset_container"):
+        with gr.Row(visible=True, elem_id="create_new_dataset_container") as create_new_container:
             with gr.Column():
                 start_dataset_button = gr.Button("Start New Dataset")
                 upload_files = gr.File(
@@ -451,7 +451,7 @@ def build_interface():
                 dataset_path_display = gr.Textbox(label="Current Dataset Path", interactive=False)
 
         # Container for selecting existing dataset
-        with gr.Row(elem_id="select_existing_dataset_container"):
+        with gr.Row(visible=False, elem_id="select_existing_dataset_container") as select_existing_container:
             with gr.Column():
                 existing_datasets = gr.Dropdown(
                     choices=get_existing_datasets(),
@@ -463,22 +463,25 @@ def build_interface():
         # Update visibility based on dataset_option
         def toggle_dataset_option(option):
             if option == "Create New Dataset":
-                return gr.update(visible=True), gr.update(visible=False)
+                return (
+                    gr.Row.update(visible=True),
+                    gr.Row.update(visible=False)
+                )
             else:
-                return gr.update(visible=False), gr.update(visible=True)
+                return (
+                    gr.Row.update(visible=False),
+                    gr.Row.update(visible=True)
+                )
 
         dataset_option.change(
             fn=toggle_dataset_option,
             inputs=dataset_option,
-            outputs=[gr.components.Row.update(visible=True), gr.components.Row.update(visible=True)]
+            outputs=[create_new_container, select_existing_container]
         )
-
-        # Initialize visibility
-        toggle_dataset_option(dataset_option.value)
 
         # Logic to handle dataset creation
         def handle_start_dataset():
-            return upload_dataset(None, None, "start")
+            return upload_dataset([], None, "start")
 
         def handle_upload(files, current_dataset):
             return upload_dataset(files, current_dataset, "add")
@@ -492,10 +495,9 @@ def build_interface():
 
         # Start New Dataset
         start_dataset_button.click(
-            fn=lambda: handle_start_dataset(),
+            fn=handle_start_dataset,
             inputs=None,
-            outputs=[dataset_path_display, upload_status],
-            _js=None
+            outputs=[dataset_path_display, upload_status]
         )
 
         # Upload Files
@@ -508,7 +510,7 @@ def build_interface():
 
         # Finalize Dataset
         finalize_button.click(
-            fn=lambda current_dataset: handle_finalize(current_dataset),
+            fn=handle_finalize,
             inputs=current_dataset_state,
             outputs=[upload_status, current_dataset_state]
         )
@@ -968,7 +970,7 @@ if __name__ == "__main__":
     }
 
     if IS_RUNPOD:
-        launch_kwargs["max_file_size"] = 500  # Gradio expects size in MB
+        launch_kwargs["max_file_size"] = MAX_UPLOAD_SIZE_MB  # Gradio expects size in MB
     else:
         launch_kwargs["max_file_size"] = None  # No limit
 
