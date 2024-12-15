@@ -1,0 +1,56 @@
+server {
+    listen 8080;
+
+    # Proxy for Gradio (port 7860)
+    location / {
+        proxy_pass http://localhost:7860;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;             # Disable buffering for WebSocket
+        proxy_http_version 1.1;          # Required for WebSocket
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # Proxy for JupyterLab (port 8888)
+    location /jupyter/ {
+        proxy_pass http://localhost:8888/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;             # Disable buffering for WebSocket
+        proxy_http_version 1.1;          # Required for WebSocket
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    # Access to the output directory (no restrictions on file types)
+    location /output {
+        alias /workspace/output;         # Serve files from this directory
+        autoindex on;                    # Enable directory listing
+    }
+
+    # Access to the models directory
+    location /models/ {
+        alias /workspace/models;
+        autoindex on;                    # Enable directory listing
+    }
+
+    # Access to the datasets directory
+    location /datasets/ {
+        alias /workspace/datasets;
+        autoindex on;                    # Enable directory listing
+    }
+
+    # Access to the config history directory
+    location /config_history/ {
+        alias /workspace/config_history;
+        autoindex on;                    # Enable directory listing
+    }
+
+    # Global configuration for large file uploads
+    client_max_body_size 10G;            # Allow uploads up to 10GB
+}

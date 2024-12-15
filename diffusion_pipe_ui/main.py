@@ -17,10 +17,10 @@ import json
 # -----------------------------
 
 # Working directories
-MODEL_DIR = "/models"
-BASE_DATASET_DIR = "/datasets"
-OUTPUT_DIR = "/output"
-CONFIG_HISTORY_DIR = "/config_history"
+MODEL_DIR = "/workspace/models"
+BASE_DATASET_DIR = "/workspace/datasets"
+OUTPUT_DIR = "/workspace/output"
+CONFIG_HISTORY_DIR = "/workspace/config_history"
 
 # Create directories if they don't exist
 os.makedirs(CONFIG_HISTORY_DIR, exist_ok=True)
@@ -812,5 +812,5 @@ if __name__ == "__main__":
         auth=None,
         share=False,
         max_file_size=2 * gr.FileSize.GB,
-        allowed_paths=["/datasets", "/output", "/config_history", "/models", ".", "/app"]
+        allowed_paths=["/workspace", ".", "/"]
     )

@@ -6,7 +6,7 @@ ARG GRADIO_PORT=7860
 
 FROM $DOCKER_FROM AS base
 
-WORKDIR /app
+WORKDIR /workspace
 
 # Environment variables
 ENV DEBIAN_FRONTEND=noninteractive
@@ -48,7 +48,7 @@ RUN $CONDA_DIR/bin/conda run -n pyenv \
     pip install torch==$PYTORCH torchvision torchaudio --index-url https://download.pytorch.org/whl/cu$CUDA
 
 # Copy Poetry configuration files
-COPY pyproject.toml poetry.lock* /app/
+COPY pyproject.toml poetry.lock* /workspace/
 
 # Install Poetry dependencies
 RUN $CONDA_DIR/bin/conda run -n pyenv \
@@ -57,17 +57,25 @@ RUN $CONDA_DIR/bin/conda run -n pyenv \
 # Install git lfs
 RUN apt-get update && apt-get install -y git-lfs && git lfs install
 
-RUN echo "cache"
+# Install nginx
+RUN apt-get update && \
+apt-get install -y nginx
+
+COPY default /etc/nginx/sites-available/default
+
+# Add Jupyter Notebook
+RUN pip3 install jupyterlab
+EXPOSE 8888
 
 # Copy all files
-COPY . /app
+COPY . /workspace
 
 
 # Ensure that the entrypoint script is executable
-RUN chmod +x /app/entrypoint.sh
+RUN chmod +x /workspace/entrypoint.sh
+RUN chmod +x /workspace/start.sh
 
 # Expose the Gradio port
 EXPOSE $GRADIO_PORT
 
-# Set the original entrypoint
-ENTRYPOINT ["/app/entrypoint.sh"]
+CMD [ "/workspace/start.sh" ]
