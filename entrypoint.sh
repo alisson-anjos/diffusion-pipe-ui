@@ -25,11 +25,11 @@ if [ ! -f "$INIT_MARKER" ]; then
 
     # Install Poetry dependencies first
     echo "Installing Poetry dependencies..."
-    poetry install --no-interaction --no-ansi
+    conda run -n pyenv poetry install --no-interaction --no-ansi
 
     # Install diffusion-pipe requirements
     echo "Installing diffusion-pipe requirements..."
-    poetry run pip install -r $REPO_DIR_UI/diffusion-pipe/requirements.txt
+    conda run -n pyenv pip install -r $REPO_DIR_UI/diffusion-pipe/requirements.txt
 
     # Set up PYTHONPATH
     export PYTHONPATH="$REPO_DIR_UI:$REPO_DIR_UI/diffusion-pipe:$REPO_DIR_UI/diffusion-pipe/submodules/HunyuanVideo:$PYTHONPATH"
@@ -89,4 +89,5 @@ mkdir -p /root/.triton/autotune
 export NCCL_P2P_DISABLE=1
 export NCCL_IB_DISABLE=1
 
-exec poetry run python /workspace/diffusion-pipe-ui/main.py
+# Execute main.py with conda environment
+exec conda run -n pyenv python /workspace/diffusion-pipe-ui/main.py

@@ -11,57 +11,55 @@ WORKDIR /workspace
 # Environment variables
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
-ENV PATH="/root/.local/bin:/usr/local/bin:$PATH"
+ENV PYTHON_VERSION=3.12
+ENV CONDA_DIR=/opt/conda
+ENV PATH="$CONDA_DIR/bin:$PATH"
+ENV MODEL_DIR="/models" 
+ENV OUTPUT_DIR="/output"
+ENV POETRY_HOME="$CONDA_DIR"
+ENV PATH="$POETRY_HOME/bin:$PATH"
 ENV NUM_GPUS=1
 
-# Install system dependencies
+# Install dependencies required for Miniconda
 RUN apt-get update -y && \
-    apt-get install -y \
-    software-properties-common \
-    git \
-    git-lfs \
-    curl \
-    wget \
-    zip \
-    unzip \
-    vim \
-    nginx \
-    openssh-server \
-    openssh-client \
-    openmpi-bin \
-    libopenmpi-dev \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    apt-get install -y wget bzip2 ca-certificates git curl && \
+    apt-get install -y --no-install-recommends openssh-server openssh-client git-lfs vim zip unzip nginx && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-# Install Python 3.12
-RUN add-apt-repository -y ppa:deadsnakes/ppa && \
-    apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    python3.12 \
-    python3.12-dev \
-    python3.12-venv \
-    && curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 \
-    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 \
-    && update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1
+# Download and install Miniconda
+RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh && \
+    bash miniconda.sh -b -p $CONDA_DIR && \
+    rm miniconda.sh && \
+    $CONDA_DIR/bin/conda init bash
 
-# Install PyTorch and related packages first
-RUN pip3 install --index-url https://download.pytorch.org/whl/cu121 \
-    torch==2.4.1 \
-    torchvision==0.19.1 \
-    torchaudio==2.4.1
+# Create environment with Python 3.12
+RUN $CONDA_DIR/bin/conda create -n pyenv python=3.12 -y
 
-# Install Poetry
-RUN curl -sSL https://install.python-poetry.org | python3 - && \
-    poetry config virtualenvs.create false
+# Install Poetry in the conda environment
+RUN $CONDA_DIR/bin/conda run -n pyenv pip install poetry && \
+    $CONDA_DIR/bin/conda run -n pyenv poetry config virtualenvs.create false
+
+# Define PyTorch versions via arguments
+ARG PYTORCH="2.4.1"
+ARG CUDA="124"
+
+# Install PyTorch with specified version and CUDA
+RUN $CONDA_DIR/bin/conda run -n pyenv \
+    pip install torch==$PYTORCH torchvision torchaudio --index-url https://download.pytorch.org/whl/cu$CUDA
+
+# Copy Poetry configuration files
+COPY pyproject.toml poetry.lock* /workspace/
+
+# Install Poetry dependencies
+RUN $CONDA_DIR/bin/conda run -n pyenv \
+    poetry install --only main --no-interaction --no-ansi
 
 # Install git lfs
 RUN git lfs install
 
 # Configure nginx
 COPY default /etc/nginx/sites-available/default
-
-# Copy project files
-COPY pyproject.toml poetry.lock* /workspace/
 
 # Add Jupyter Notebook
 RUN pip3 install jupyterlab nodejs
