@@ -1,15 +1,16 @@
 [tool.poetry]
 name = "diffusion-pipe-ui"
 version = "0.1.0"
-description = ""
-authors = ["Alisson Pereira Anjos <100760760+vg-alisson-anjos@users.noreply.github.com>"]
-readme = "README.md"
+description = "UI for training LoRA models with diffusion-pipe"
+authors = ["Your Name <your.email@example.com>"]
 
 [tool.poetry.dependencies]
 python = "^3.12"
-gradio = "^5.8.0"
-psutil = "^6.1.0"
+gradio = "^4.19.2"
+toml = "^0.10.2"
 
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
 
 [build-system]
 requires = ["poetry-core"]

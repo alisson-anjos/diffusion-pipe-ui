@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  diffusion-pipe-ui:
+    build:
+      context: .
+      args:
+        CUDA_VERSION: "12.4.1"
+        UBUNTU_VERSION: "22.04"
+    ports:
+      - "7860:7860"  # Gradio
+      - "8888:8888"  # Jupyter
+    volumes:
+      - ./:/workspace
+      - models:/workspace/models
+      - output:/workspace/output
+      - datasets:/workspace/datasets
+      - config_history:/workspace/config_history
+    environment:
+      - NUM_GPUS=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  models:
+  output:
+  datasets:
+  config_history:
