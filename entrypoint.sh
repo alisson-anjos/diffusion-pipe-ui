@@ -19,18 +19,18 @@ if [ ! -d "$REPO_DIR_UI/.git" ]; then
     git clone --branch $REPO_BRANCH_UI $REPO_URL_UI $REPO_DIR_UI
 fi
 
+REPO_URL=${REPO_URL:-"https://github.com/tdrussell/diffusion-pipe"}
+REPO_BRANCH=${REPO_BRANCH:-"main"}
+REPO_DIR=${REPO_DIR:-"/workspace/diffusion-pipe"}
+
+# Clone repository if not present
+if [ ! -d "$REPO_DIR/.git" ]; then
+    echo "Cloning repository $REPO_URL with submodules..."
+    git clone --recurse-submodules --branch $REPO_BRANCH $REPO_URL $REPO_DIR
+fi
+
 if [ ! -f "$INIT_MARKER" ]; then
     echo "First-time initialization..."
-
-    REPO_URL=${REPO_URL:-"https://github.com/tdrussell/diffusion-pipe"}
-    REPO_BRANCH=${REPO_BRANCH:-"main"}
-    REPO_DIR=${REPO_DIR:-"/workspace/diffusion-pipe"}
-
-    # Clone repository if not present
-    if [ ! -d "$REPO_DIR/.git" ]; then
-        echo "Cloning repository $REPO_URL with submodules..."
-        git clone --recurse-submodules --branch $REPO_BRANCH $REPO_URL $REPO_DIR
-    fi
 
     echo "Installing CUDA nvcc..."
     conda install -y -c nvidia cuda-nvcc --override-channels
