@@ -27,7 +27,7 @@ if [ ! -f "$INIT_MARKER" ]; then
     echo "Installing Poetry dependencies..."
     poetry install --no-interaction --no-ansi
 
-    # Then install diffusion-pipe requirements in the Poetry environment
+    # Install diffusion-pipe requirements
     echo "Installing diffusion-pipe requirements..."
     poetry run pip install -r $REPO_DIR_UI/diffusion-pipe/requirements.txt
 
