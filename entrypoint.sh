@@ -6,8 +6,11 @@ DOWNLOAD_MODELS=${DOWNLOAD_MODELS:-"true"}  # Default if not set
 
 echo "DOWNLOAD_MODELS is: $DOWNLOAD_MODELS"
 
+source /opt/conda/etc/profile.d/conda.sh
+conda activate pyenv
+
 REPO_URL_UI=${REPO_URL_UI:-"https://github.com/alisson-anjos/diffusion-pipe-ui"}
-REPO_BRANCH_UI=${REPO_BRANCH_UI:-"testing"}
+REPO_BRANCH_UI=${REPO_BRANCH_UI:-"main"}
 REPO_DIR_UI=${REPO_DIR_UI:-"/workspace/diffusion-pipe-ui"}
 
 # Clone repository if not present
@@ -23,15 +26,12 @@ git submodule update --init --recursive
 if [ ! -f "$INIT_MARKER" ]; then
     echo "First-time initialization..."
 
-    # Install Poetry dependencies first
-    echo "Installing Poetry dependencies..."
-    conda run -n pyenv poetry install --no-interaction --no-ansi
+    echo "Installing CUDA nvcc..."
+    conda install -y -c nvidia cuda-nvcc --override-channels
 
-    # Install diffusion-pipe requirements
-    echo "Installing diffusion-pipe requirements..."
-    conda run -n pyenv pip install -r $REPO_DIR_UI/diffusion-pipe/requirements.txt
+    echo "Installing dependencies from requirements.txt..."
+    pip install --no-cache-dir -r $REPO_DIR_UI/diffusion-pipe/requirements.txt
 
-    # Set up PYTHONPATH
     export PYTHONPATH="$REPO_DIR_UI:$REPO_DIR_UI/diffusion-pipe:$REPO_DIR_UI/diffusion-pipe/submodules/HunyuanVideo:$PYTHONPATH"
     export PYTHONPATH="$REPO_DIR_UI:$REPO_DIR_UI/diffusion-pipe/configs:$PYTHONPATH"
     export PATH="$REPO_DIR_UI:$REPO_DIR_UI/diffusion-pipe:$PATH"
@@ -89,5 +89,4 @@ mkdir -p /root/.triton/autotune
 export NCCL_P2P_DISABLE=1
 export NCCL_IB_DISABLE=1
 
-# Execute main.py with conda environment
-exec conda run -n pyenv python /workspace/diffusion-pipe-ui/main.py
+exec python /workspace/diffusion-pipe-ui/main.py

@@ -23,7 +23,7 @@ ENV NUM_GPUS=1
 # Install dependencies required for Miniconda
 RUN apt-get update -y && \
     apt-get install -y wget bzip2 ca-certificates git curl && \
-    apt-get install -y --no-install-recommends openssh-server openssh-client git-lfs vim zip unzip nginx && \
+    apt-get install -y --no-install-recommends openssh-server openssh-client git-lfs vim zip unzip && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -56,16 +56,20 @@ RUN $CONDA_DIR/bin/conda run -n pyenv \
     poetry install --only main --no-interaction --no-ansi
 
 # Install git lfs
-RUN git lfs install
+RUN apt-get update && apt-get install -y git-lfs && git lfs install
 
-# Configure nginx
+# Install nginx
+RUN apt-get update && \
+apt-get install -y nginx
+
 COPY default /etc/nginx/sites-available/default
 
 # Add Jupyter Notebook
 RUN pip3 install jupyterlab nodejs
 EXPOSE 8888
 
-# Copy scripts
+COPY poetry.lock pyproject.toml /workspace/
+
 COPY --chmod=755 start.sh /start.sh
 COPY --chmod=755 entrypoint.sh /entrypoint.sh
 

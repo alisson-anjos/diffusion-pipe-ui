@@ -13,19 +13,22 @@ then
     service ssh start
 fi
 
+source /opt/conda/etc/profile.d/conda.sh
+conda activate pyenv
+
 if [[ -z "${HF_TOKEN}" ]] || [[ "${HF_TOKEN}" == "enter_your_huggingface_token_here" ]]
 then
     echo "HF_TOKEN is not set"
 else
     echo "HF_TOKEN is set, logging in..."
-    conda run -n pyenv huggingface-cli login --token ${HF_TOKEN}
+    huggingface-cli login --token ${HF_TOKEN}
 fi
 
 # Start nginx as reverse proxy to enable api access
 service nginx start
 
-# Start JupyterLab with conda environment
-conda run -n pyenv jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.allow_origin='*' --NotebookApp.token='' --ServerApp.preferred_dir=/workspace &
+# Start JupyterLab
+jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.allow_origin='*' --NotebookApp.token='' --ServerApp.preferred_dir=/workspace &
 echo "JupyterLab started"
 
 # Execute the entrypoint script
