@@ -11,9 +11,117 @@ from diffusion_pipe_ui.config import (
 )
 import json
 
+# Define o tema personalizado
+theme = gr.themes.Monochrome(
+    primary_hue="gray",
+    secondary_hue="gray",
+    neutral_hue="gray",
+    text_size=gr.themes.Size(
+        lg="18px", 
+        md="15px", 
+        sm="13px", 
+        xl="22px", 
+        xs="12px", 
+        xxl="24px", 
+        xxs="9px"
+    ),
+    font=[
+        gr.themes.GoogleFont("Source Sans Pro"),
+        "ui-sans-serif",
+        "system-ui",
+        "sans-serif"
+    ]
+)
+
+# Define o CSS personalizado
+css = """
+h1 { 
+    font-size: 2em;
+    text-align: center;
+    margin-bottom: 0.5em;
+    color: #ffffff;
+}
+
+h2, h3, h4 {
+    color: #ffffff;
+    margin-top: 1em;
+}
+
+.gradio-container {
+    background-color: #1a1a1a !important;
+    color: #ffffff;
+}
+
+.tabs {
+    border: 0px;
+    background-color: #2a2a2a;
+}
+
+.tabitem {
+    background-color: #2a2a2a;
+    border: 0px !important;
+}
+
+.group_padding {
+    padding: .55em;
+}
+
+.contain {
+    background-color: #2a2a2a !important;
+}
+
+.gr-box {
+    background-color: #2a2a2a !important;
+    border: 1px solid #3a3a3a !important;
+}
+
+.gr-button {
+    background-color: #3a3a3a !important;
+    border: 1px solid #4a4a4a !important;
+    color: #ffffff !important;
+}
+
+.gr-button:hover {
+    background-color: #4a4a4a !important;
+}
+
+.gr-input, .gr-dropdown {
+    background-color: #2a2a2a !important;
+    border: 1px solid #3a3a3a !important;
+    color: #ffffff !important;
+}
+
+.gr-input:focus, .gr-dropdown:focus {
+    border-color: #4a4a4a !important;
+}
+
+.gr-form {
+    background-color: #2a2a2a !important;
+    border: 1px solid #3a3a3a !important;
+}
+
+.gr-panel {
+    background-color: #2a2a2a !important;
+}
+
+.gr-checkbox {
+    background-color: #2a2a2a !important;
+}
+
+#gallery {
+    background-color: #2a2a2a !important;
+}
+
+#log_box {
+    background-color: #2a2a2a !important;
+    color: #ffffff !important;
+    border: 1px solid #3a3a3a !important;
+}
+"""
+
 def build_interface():
     """Build the Gradio interface."""
-    with gr.Blocks() as demo:
+    with gr.Blocks(theme=theme, css=css) as demo:
         gr.Markdown("# LoRA Training Interface for Hunyuan Video")
 
         # 1. Step 1: Dataset Management
@@ -56,9 +164,8 @@ def build_interface():
                     label="Select Existing Dataset",
                     interactive=True
                 )
-                # Removido 'selected_dataset_display' para evitar duplicidade
 
-        # 2. Media Gallery (Definido antes dos callbacks que a utilizam)
+        # 2. Media Gallery
         gr.Markdown("### Media Gallery")
         gallery = gr.Gallery(
             label="Uploaded Media",
@@ -604,18 +711,5 @@ def build_interface():
                 inputs=[dataset_path_display, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets],
                 outputs=dataset_file
             )
-
-        # # 6. Auto-Scroll no Log Box
-        # gr.HTML("""
-        # <script>
-        # const logBox = document.getElementById("log_box");
-        # const observer = new MutationObserver(function(mutations) {
-        #     mutations.forEach(function(mutation) {
-        #         logBox.scrollTop = logBox.scrollHeight;
-        #     });
-        # });
-        # observer.observe(logBox, { childList: true, subtree: true, characterData: true });
-        # </script>
-        # """)
 
     return demo

@@ -156,12 +156,12 @@ def train_lora(dataset_path, output_dir, epochs, batch_size, lr, save_every, eva
         # Training command
         conda_activate_path = "/opt/conda/etc/profile.d/conda.sh"
         conda_env_name = "pyenv"
-        num_gpus = os.getenv("NUM_GPUS", "1")  # Get NUM_GPUS from environment variable, default to 1 if not set
+        num_gpus = os.getenv("NUM_GPUS", "1")  # Get NUM_GPUS from environment variable, default to 1
 
         command = (
             f"bash -c 'source {conda_activate_path} && "
             f"conda activate {conda_env_name} && "
-            f"cd /workspace/diffusion-pipe && "
+            f"cd /workspace/diffusion-pipe-ui/diffusion-pipe && "  # Updated path to use submodule
             f"NCCL_P2P_DISABLE=1 NCCL_IB_DISABLE=1 deepspeed --num_gpus={num_gpus} "
             f"train.py --deepspeed --config {training_config_path}'"
         )
