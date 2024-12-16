@@ -1,4 +1,4 @@
 [submodule "diffusion-pipe"]
-    path = diffusion-pipe
-    url = https://github.com/tdrussell/diffusion-pipe.git
+	path = diffusion-pipe
+	url = https://github.com/tdrussell/diffusion-pipe.git
     branch = main
