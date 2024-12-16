@@ -566,6 +566,7 @@ def build_interface():
                     video_clip_mode=video_clip_mode_val
                 )
                 for log in generator:
+                    print(log)
                     logs += log + "\n"
                     yield (logs, is_training, gr.update(value="Stop Training"))
     
