@@ -173,7 +173,7 @@ def train_lora(dataset_path, output_dir, epochs, batch_size, lr, save_every, eva
         command = (
             f"bash -c 'source {conda_activate_path} && "
             f"conda activate {conda_env_name} && "
-            f"cd /diffusion-pipe && "
+            f"cd /workspace/diffusion-pipe && "
             f"NCCL_P2P_DISABLE=1 NCCL_IB_DISABLE=1 deepspeed --num_gpus=1 "
             f"train.py --deepspeed --config {training_config_path}'"
         )
