@@ -605,17 +605,17 @@ def build_interface():
                 outputs=dataset_file
             )
 
-        # 6. Auto-Scroll no Log Box
-        gr.HTML("""
-        <script>
-        const logBox = document.getElementById("log_box");
-        const observer = new MutationObserver(function(mutations) {
-            mutations.forEach(function(mutation) {
-                logBox.scrollTop = logBox.scrollHeight;
-            });
-        });
-        observer.observe(logBox, { childList: true, subtree: true, characterData: true });
-        </script>
-        """)
+        # # 6. Auto-Scroll no Log Box
+        # gr.HTML("""
+        # <script>
+        # const logBox = document.getElementById("log_box");
+        # const observer = new MutationObserver(function(mutations) {
+        #     mutations.forEach(function(mutation) {
+        #         logBox.scrollTop = logBox.scrollHeight;
+        #     });
+        # });
+        # observer.observe(logBox, { childList: true, subtree: true, characterData: true });
+        # </script>
+        # """)
 
     return demo
