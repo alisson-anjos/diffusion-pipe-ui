@@ -4,10 +4,6 @@ ARG UBUNTU_VERSION="22.04"
 ARG DOCKER_FROM=nvidia/cuda:$CUDA_VERSION-cudnn$CUDNN_VERSION-devel-ubuntu$UBUNTU_VERSION
 ARG GRADIO_PORT=7860
 
-# Define PyTorch versions
-ARG PYTORCH_VERSION="2.4.1"
-ARG CUDA_VERSION_SHORT="124"  # 12.1 -> 121, 12.4 -> 124, etc
-
 FROM $DOCKER_FROM AS base
 
 WORKDIR /workspace
@@ -51,11 +47,6 @@ RUN add-apt-repository -y ppa:deadsnakes/ppa && \
 # Install Poetry
 RUN curl -sSL https://install.python-poetry.org | python3 - && \
     poetry config virtualenvs.create false
-
-# Install PyTorch with specified version and CUDA
-ARG PYTORCH_VERSION
-ARG CUDA_VERSION_SHORT
-RUN pip3 install torch==${PYTORCH_VERSION} torchvision torchaudio --index-url https://download.pytorch.org/whl/cu${CUDA_VERSION_SHORT}
 
 # Install git lfs
 RUN git lfs install
