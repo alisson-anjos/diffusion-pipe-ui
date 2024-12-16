@@ -39,26 +39,30 @@ h1 {
     font-size: 2em;
     text-align: center;
     margin-bottom: 0.5em;
-    color: #ffffff;
+    color: #aaaaaa;
 }
 
 h2, h3, h4 {
-    color: #ffffff;
+    color: #aaaaaa;
     margin-top: 1em;
 }
 
+p, span, label, div {
+    color: #aaaaaa !important;
+}
+
 .gradio-container {
-    background-color: #1a1a1a !important;
-    color: #ffffff;
+    background-color: #0f0f0f !important;
+    color: #aaaaaa;
 }
 
 .tabs {
     border: 0px;
-    background-color: #2a2a2a;
+    background-color: #1a1a1a;
 }
 
 .tabitem {
-    background-color: #2a2a2a;
+    background-color: #1a1a1a;
     border: 0px !important;
 }
 
@@ -67,55 +71,108 @@ h2, h3, h4 {
 }
 
 .contain {
-    background-color: #2a2a2a !important;
+    background-color: #1a1a1a !important;
 }
 
 .gr-box {
-    background-color: #2a2a2a !important;
-    border: 1px solid #3a3a3a !important;
+    background-color: #1a1a1a !important;
+    border: 1px solid #2a2a2a !important;
 }
 
 .gr-button {
-    background-color: #3a3a3a !important;
-    border: 1px solid #4a4a4a !important;
-    color: #ffffff !important;
+    background-color: #2a2a2a !important;
+    border: 1px solid #3a3a3a !important;
+    color: #aaaaaa !important;
 }
 
 .gr-button:hover {
-    background-color: #4a4a4a !important;
+    background-color: #3a3a3a !important;
 }
 
 .gr-input, .gr-dropdown {
-    background-color: #2a2a2a !important;
-    border: 1px solid #3a3a3a !important;
-    color: #ffffff !important;
+    background-color: #1a1a1a !important;
+    border: 1px solid #2a2a2a !important;
+    color: #aaaaaa !important;
 }
 
 .gr-input:focus, .gr-dropdown:focus {
-    border-color: #4a4a4a !important;
+    border-color: #3a3a3a !important;
 }
 
 .gr-form {
-    background-color: #2a2a2a !important;
-    border: 1px solid #3a3a3a !important;
+    background-color: #1a1a1a !important;
+    border: 1px solid #2a2a2a !important;
 }
 
 .gr-panel {
-    background-color: #2a2a2a !important;
+    background-color: #1a1a1a !important;
 }
 
 .gr-checkbox {
-    background-color: #2a2a2a !important;
+    background-color: #1a1a1a !important;
 }
 
 #gallery {
-    background-color: #2a2a2a !important;
+    background-color: #1a1a1a !important;
 }
 
 #log_box {
-    background-color: #2a2a2a !important;
-    color: #ffffff !important;
-    border: 1px solid #3a3a3a !important;
+    background-color: #1a1a1a !important;
+    color: #aaaaaa !important;
+    border: 1px solid #2a2a2a !important;
+}
+
+/* Additional styles for better text visibility */
+.gr-radio-row label {
+    color: #aaaaaa !important;
+}
+
+.gr-box label {
+    color: #aaaaaa !important;
+}
+
+.gr-form label {
+    color: #aaaaaa !important;
+}
+
+.gr-input-label {
+    color: #aaaaaa !important;
+}
+
+.gr-text {
+    color: #aaaaaa !important;
+}
+
+.gr-markdown {
+    color: #aaaaaa !important;
+}
+
+.info-text {
+    color: #888888 !important;
+}
+
+.gr-dropdown span {
+    color: #aaaaaa !important;
+}
+
+.gr-radio-row span {
+    color: #aaaaaa !important;
+}
+
+/* New styles for better visibility */
+.gr-button[disabled] {
+    color: #666666 !important;
+    opacity: 0.8 !important;
+}
+
+.gr-input::placeholder {
+    color: #666666 !important;
+    opacity: 0.8 !important;
+}
+
+.gr-input[disabled], .gr-dropdown[disabled] {
+    color: #666666 !important;
+    opacity: 0.8 !important;
 }
 """
 
