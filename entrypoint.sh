@@ -32,9 +32,9 @@ if [ ! -f "$INIT_MARKER" ]; then
     echo "Installing dependencies from requirements.txt..."
     pip install --no-cache-dir -r $REPO_DIR_UI/diffusion-pipe/requirements.txt
 
-    export PYTHONPATH="$REPO_DIR_UI/diffusion-pipe:$REPO_DIR_UI/diffusion-pipe/submodules/HunyuanVideo:$PYTHONPATH"
-    export PYTHONPATH="$REPO_DIR_UI/diffusion-pipe:$REPO_DIR_UI/diffusion-pipe/configs:$PYTHONPATH"
-    export PATH="$REPO_DIR_UI/diffusion-pipe:$PATH"
+    export PYTHONPATH="$REPO_DIR_UI:$REPO_DIR_UI/diffusion-pipe:$REPO_DIR_UI/diffusion-pipe/submodules/HunyuanVideo:$PYTHONPATH"
+    export PYTHONPATH="$REPO_DIR_UI:$REPO_DIR_UI/diffusion-pipe/configs:$PYTHONPATH"
+    export PATH="$REPO_DIR_UI:$REPO_DIR_UI/diffusion-pipe:$PATH"
 
     if [ "$DOWNLOAD_MODELS" = "true" ]; then
         echo "DOWNLOAD_MODELS is true, downloading models..."
