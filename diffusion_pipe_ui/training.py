@@ -4,6 +4,7 @@ import threading
 import subprocess
 import psutil
 import os
+import signal
 from diffusion_pipe_ui.utils import generate_unique_filename
 from diffusion_pipe_ui.config import CONFIG_HISTORY_DIR
 import toml
@@ -17,18 +18,12 @@ from datetime import datetime
 training_process = None
 training_lock = threading.Lock()
 
-def kill_child_processes(parent_pid):
-    """Terminate all child processes of the given parent process."""
+def kill_process_group(pid):
+    """Kill the process group including all child processes."""
     try:
-        parent = psutil.Process(parent_pid)
-        children = parent.children(recursive=True)
-        for child in children:
-            child.terminate()
-        parent.terminate()
-        gone, alive = psutil.wait_procs(children, timeout=5)
-        parent.wait(5)
-    except psutil.NoSuchProcess:
-        pass
+        os.killpg(os.getpgid(pid), signal.SIGTERM)
+    except ProcessLookupError:
+        pass  # Process already terminated
 
 def create_training_config(output_dir, dataset_path, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
                            transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
@@ -92,16 +87,8 @@ def stop_training():
     with training_lock:
         if training_process is not None:
             try:
-                # Attempt graceful termination
-                training_process.terminate()
-                try:
-                    training_process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    # Force kill if not terminated
-                    training_process.kill()
-                    training_process.wait(timeout=5)
-                # Terminate child processes
-                kill_child_processes(training_process.pid)
+                # Kill the entire process group
+                kill_process_group(training_process.pid)
                 training_process = None
                 return "Training process and all child processes have been stopped."
             except Exception as e:
@@ -166,42 +153,81 @@ def train_lora(dataset_path, output_dir, epochs, batch_size, lr, save_every, eva
             video_clip_mode=video_clip_mode
         )
 
-        # Training command (replace with the actual command)
+        # Training command
         conda_activate_path = "/opt/conda/etc/profile.d/conda.sh"
         conda_env_name = "pyenv"
+        num_gpus = os.getenv("NUM_GPUS", "1")  # Get NUM_GPUS from environment variable, default to 1 if not set
 
         command = (
             f"bash -c 'source {conda_activate_path} && "
             f"conda activate {conda_env_name} && "
             f"cd /workspace/diffusion-pipe && "
-            f"NCCL_P2P_DISABLE=1 NCCL_IB_DISABLE=1 deepspeed --num_gpus=1 "
+            f"NCCL_P2P_DISABLE=1 NCCL_IB_DISABLE=1 deepspeed --num_gpus={num_gpus} "
             f"train.py --deepspeed --config {training_config_path}'"
         )
 
-        # Start the training process
+        # Start the training process with process group control
         training_process = subprocess.Popen(
             command,
             shell=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            start_new_session=True  # Start the process in a new session
+            bufsize=1,  # Line buffered
+            preexec_fn=os.setsid  # Create new process group
         )
 
-    # Stream the logs
+    # Stream the logs with non-blocking reads
+    import select
+    import fcntl
+    import errno
+
+    # Set non-blocking mode for stdout and stderr
+    for pipe in [training_process.stdout, training_process.stderr]:
+        fd = pipe.fileno()
+        fl = fcntl.fcntl(fd, fcntl.F_GETFL)
+        fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+
     try:
-        while True:
-            output_line = training_process.stdout.readline()
-            error_line = training_process.stderr.readline()
-            if output_line:
-                yield output_line.strip()
-            if error_line:
-                yield error_line.strip()
-            if output_line == "" and error_line == "" and training_process.poll() is not None:
-                break
+        while training_process.poll() is None:
+            reads = [training_process.stdout.fileno(), training_process.stderr.fileno()]
+            readable, _, _ = select.select(reads, [], [], 0.1)
+
+            for fd in readable:
+                if fd == training_process.stdout.fileno():
+                    try:
+                        line = training_process.stdout.readline()
+                        if line:
+                            yield line.strip()
+                    except IOError as e:
+                        if e.errno != errno.EAGAIN:
+                            raise
+
+                if fd == training_process.stderr.fileno():
+                    try:
+                        line = training_process.stderr.readline()
+                        if line:
+                            yield line.strip()
+                    except IOError as e:
+                        if e.errno != errno.EAGAIN:
+                            raise
+
+        # Read any remaining output
+        remaining_stdout = training_process.stdout.read()
+        if remaining_stdout:
+            for line in remaining_stdout.splitlines():
+                yield line.strip()
+
+        remaining_stderr = training_process.stderr.read()
+        if remaining_stderr:
+            for line in remaining_stderr.splitlines():
+                yield line.strip()
+
     except Exception as e:
         yield f"Error during training: {str(e)}"
     finally:
         with training_lock:
-            training_process = None
+            if training_process is not None:
+                kill_process_group(training_process.pid)
+                training_process = None
             yield "Training process has finished."
