@@ -88,4 +88,4 @@ else
     echo "Container already initialized. Skipping first-time setup."
 fi
 
-exec python /workspace/diffusion-pipe-ui/diffusion_pipe_ui/main.py
+exec python /workspace/diffusion-pipe-ui/main.py
