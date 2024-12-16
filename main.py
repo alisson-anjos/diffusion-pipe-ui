@@ -16,7 +16,7 @@ def main():
     }
 
     if IS_RUNPOD:
-        launch_kwargs["max_file_size"] = MAX_UPLOAD_SIZE_MB  # Gradio espera tamanho em MB
+        launch_kwargs["max_file_size"] = f"{MAX_UPLOAD_SIZE_MB}mb"  # Gradio espera tamanho em MB
     else:
         launch_kwargs["max_file_size"] = None  # Sem limite
 
