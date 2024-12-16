@@ -10,7 +10,7 @@ source /opt/conda/etc/profile.d/conda.sh
 conda activate pyenv
 
 REPO_URL_UI=${REPO_URL_UI:-"https://github.com/alisson-anjos/diffusion-pipe-ui"}
-REPO_BRANCH_UI=${REPO_BRANCH_UI:-"main"}
+REPO_BRANCH_UI=${REPO_BRANCH_UI:-"testing"}
 REPO_DIR_UI=${REPO_DIR_UI:-"/workspace/diffusion-pipe-ui"}
 
 # Clone repository if not present
