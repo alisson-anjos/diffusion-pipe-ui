@@ -44,6 +44,12 @@ RUN add-apt-repository -y ppa:deadsnakes/ppa && \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 \
     && update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1
 
+# Install PyTorch and related packages first
+RUN pip3 install --index-url https://download.pytorch.org/whl/cu121 \
+    torch==2.4.1 \
+    torchvision==0.19.1 \
+    torchaudio==2.4.1
+
 # Install Poetry
 RUN curl -sSL https://install.python-poetry.org | python3 - && \
     poetry config virtualenvs.create false

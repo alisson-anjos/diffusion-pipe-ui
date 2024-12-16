@@ -8,17 +8,9 @@ authors = ["Your Name <your.email@example.com>"]
 python = "^3.12"
 gradio = "^4.19.2"
 toml = "^0.10.2"
-torch = { version = "2.4.1", source = "torch-cu121" }
-torchvision = { version = "*", source = "torch-cu121" }
-torchaudio = { version = "*", source = "torch-cu121" }
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
-
-[[tool.poetry.source]]
-name = "torch-cu121"
-url = "https://download.pytorch.org/whl/cu121"
-priority = "explicit"
 
 [build-system]
 requires = ["poetry-core"]
