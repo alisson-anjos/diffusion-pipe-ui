@@ -13,8 +13,8 @@ then
     service ssh start
 fi
 
-source /opt/conda/etc/profile.d/conda.sh
-conda activate pyenv
+# source /opt/conda/etc/profile.d/conda.sh
+# conda activate pyenv
 
 if [[ -z "${HF_TOKEN}" ]] || [[ "${HF_TOKEN}" == "enter_your_huggingface_token_here" ]]
 then

@@ -68,7 +68,7 @@ COPY default /etc/nginx/sites-available/default
 RUN pip3 install jupyterlab nodejs
 EXPOSE 8888
 
-COPY poetry.lock pyproject.toml /workspace/
+COPY pyproject.toml /workspace/
 
 COPY --chmod=755 start.sh /start.sh
 COPY --chmod=755 entrypoint.sh /entrypoint.sh
