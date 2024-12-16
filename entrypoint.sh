@@ -82,4 +82,7 @@ else
     echo "Container already initialized. Skipping first-time setup."
 fi
 
+# Create Triton autotune directory
+mkdir -p /root/.triton/autotune
+
 exec python /workspace/diffusion-pipe-ui/main.py
