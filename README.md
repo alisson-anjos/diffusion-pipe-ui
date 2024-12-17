@@ -1,3 +1,6 @@
+WIP
+
+
 # Diffusion-Pipe-UI
 
 This repository provides a LoRA Training Interface for the Hunyuan Video model using [Gradio](https://gradio.app/). The UI was initially created with the assistance of ChatGPT and may contain various issues or rough edges. Contributions, bug reports, and improvements are welcome!
