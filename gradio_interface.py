@@ -41,6 +41,27 @@ process_lock = threading.Lock()
 
 log_queue = queue.Queue()
 
+# Define custom CSS for styling the log box and search box
+custom_log_box_css = """
+#log_box textarea {
+    overflow-y: scroll;
+    max-height: 400px;  /* Set a max height for the log box */
+    white-space: pre-wrap;  /* Preserve line breaks and white spaces */
+    border: 1px solid #ccc;
+    padding: 10px;
+    font-family: monospace;
+    scrollbar-width: thin!important;
+}
+
+#file_explorer {
+max-height: 374px!important;
+}
+
+#file_explorer .file-wrap {
+max-height: 320px!important;
+}
+"""
+
 def read_subprocess_output(proc, log_queue):
     for line in iter(proc.stdout.readline, b''):
         decoded_line = line.decode('utf-8')
@@ -606,8 +627,9 @@ def upload_dataset(files, current_dataset, action, dataset_name=None):
     if action == "start":
         if not dataset_name:
             return current_dataset, "Please provide a dataset name.", []
-        # Ensure the dataset name does not contain invalid characters
+        # Clean and format the dataset name
         dataset_name = "".join(c for c in dataset_name if c.isalnum() or c in (' ', '_', '-')).rstrip()
+        dataset_name = dataset_name.replace(" ", "_")  # Replace spaces with underscores
         dataset_dir = os.path.join(BASE_DATASET_DIR, dataset_name)
         if os.path.exists(dataset_dir):
             return current_dataset, f"Dataset '{dataset_name}' already exists. Please choose a different name.", []
@@ -663,6 +685,7 @@ def upload_dataset(files, current_dataset, action, dataset_name=None):
                 continue
 
     return current_dataset, f"Uploaded files: {', '.join(uploaded_files)}", show_media(current_dataset)
+
 
 def update_ui_with_config(config_values):
     """
@@ -1015,49 +1038,71 @@ theme = gr.themes.Monochrome(
     ]
 )
 
+def get_selected_file(file_paths):
+    """
+    Handles file selection and prepares it for download.
+    """
+    # Handle the case when file_paths is a string (single file)
+    if isinstance(file_paths, str):
+        if os.path.isdir(file_paths):
+            return None, "Please select a single file and not a folder."
+        if not os.path.exists(file_paths):
+            return None, f"File not found: {file_paths}"
+        return file_paths, f"File '{os.path.basename(file_paths)}' ready for download."
+
+    # Handle the case when file_paths is a list (multiple files)
+    if isinstance(file_paths, list) and file_paths:
+        file_path = file_paths[0]  # Use the first file
+        if os.path.isdir(file_path):
+            return None, "Please select a single file and not a folder."
+        if not os.path.exists(file_path):
+            return None, f"File not found: {file_path}"
+        return file_path, f"File '{os.path.basename(file_path)}' ready for download."
+
+    return None, "Invalid or no file selected."
+
 # Gradio Interface
-with gr.Blocks(theme=theme) as demo:
+with gr.Blocks(theme=theme, css=custom_log_box_css) as demo:
     gr.Markdown("# LoRA Training Interface for Hunyuan Video")
+
+    gr.Markdown("### Step 1: Dataset Management\nChoose to create a new dataset or select an existing one.")
     
-    with gr.Tab("Trainer"):
-        gr.Markdown("### Step 1: Dataset Management\nChoose to create a new dataset or select an existing one.")
-        
-        with gr.Row():
-            dataset_option = gr.Radio(
-                choices=["Create New Dataset", "Select Existing Dataset"],
-                value="Create New Dataset",
-                label="Dataset Option"
+    with gr.Row():
+        dataset_option = gr.Radio(
+            choices=["Create New Dataset", "Select Existing Dataset"],
+            value="Create New Dataset",
+            label="Dataset Option"
+        )
+    
+    def handle_start_dataset(dataset_name):
+        if not dataset_name.strip():
+            return (
+                gr.update(value="Please provide a dataset name."), 
+                gr.update(value=None), 
+                gr.update(visible=True),   # Keep button visible
+                gr.update(visible=False),
+                gr.update(value=""),
+                # gr.update(visible=False)  # Hide download button
             )
-        
-        def handle_start_dataset(dataset_name):
-            if not dataset_name.strip():
-                return (
-                    gr.update(value="Please provide a dataset name."), 
-                    gr.update(value=None), 
-                    gr.update(visible=True),   # Keep button visible
-                    gr.update(visible=False),
-                    gr.update(value=""),
-                    # gr.update(visible=False)  # Hide download button
-                )
-            dataset_path, message, media = upload_dataset([], None, "start", dataset_name=dataset_name)
-            if "already exists" in message:
-                return (
-                    gr.update(value=message), 
-                    gr.update(value=None), 
-                    gr.update(visible=True),   # Keep button visible
-                    gr.update(visible=False),
-                    gr.update(value=""),
-                    # gr.update(visible=False)  # Hide download button
-                )
+        dataset_path, message, media = upload_dataset([], None, "start", dataset_name=dataset_name)
+        if "already exists" in message:
             return (
                 gr.update(value=message), 
-                dataset_path, 
-                gr.update(visible=False), 
-                gr.update(visible=True),
-                gr.update(value=dataset_path),
-                # gr.update(visible=True)    # Show download button
+                gr.update(value=None), 
+                gr.update(visible=True),   # Keep button visible
+                gr.update(visible=False),
+                gr.update(value=""),
+                # gr.update(visible=False)  # Hide download button
             )
-        
+        return (
+            gr.update(value=message), 
+            dataset_path, 
+            gr.update(visible=False), 
+            gr.update(visible=True),
+            gr.update(value=dataset_path),
+            # gr.update(visible=True)    # Show download button
+        )
+    
 
         with gr.Row(visible=True, elem_id="create_new_dataset_container") as create_new_container:
                 with gr.Column():
@@ -1164,487 +1209,583 @@ with gr.Blocks(theme=theme) as demo:
                 )
             return "", "", "", "No dataset selected.", [], gr.update(value=""), {} #, gr.update(visible=False), 
 
-        with gr.Row():
-            with gr.Column():
-                dataset_path = gr.Textbox(
-                    label="Dataset Path",
-                    value=BASE_DATASET_DIR,
-                    interactive=False
-                )
-                config_dir = gr.Textbox(
-                    label="Config Path",
-                    value=CONFIG_DIR,
-                    interactive=False
-                )
-                output_dir = gr.Textbox(
-                    label="Output Path",
-                    value=OUTPUT_DIR,
-                    interactive=False
-                )
-        
-        create_dataset_button.click(
-            fn=handle_start_dataset,
-            inputs=dataset_name_input,
-            outputs=[upload_status, current_dataset_state, create_dataset_button, upload_files, dataset_path] #, download_button, download_zip]
-        )
-        
-    
-    
-        dataset_option.change(
-            fn=toggle_dataset_option,
-            inputs=dataset_option,
-            outputs=[create_new_container, select_existing_container, existing_datasets, dataset_name_input, upload_status, dataset_path, create_dataset_button, upload_files] #, download_button]
-        )
-        
-        # Update config path and output path
-        def update_config_output_path(dataset_path):
-            config_path = os.path.join(CONFIG_DIR, os.path.basename(dataset_path))
-            output_path = os.path.join(OUTPUT_DIR, os.path.basename(dataset_path))
-            return config_path, output_path
-        
-        
-        # Update gallery when dataset path changes
-        dataset_path.change(
-            fn=lambda path: show_media(path),
-            inputs=dataset_path,
-            outputs=gallery
-        )
-        
-        dataset_path.change(
-            fn=update_config_output_path,
-            inputs=dataset_path,
-            outputs=[config_dir, output_dir]
-        )
-        
-        
-        
-        # Handle Models Configurations
-        gr.Markdown("#### Models Configurations")
-        with gr.Row():
-            with gr.Column():
-                transformer_path = gr.Textbox(
-                    label="Transformer Path",
-                    value=os.path.join(MODEL_DIR, "hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors"),
-                    info="Path to the transformer model weights for Hunyuan Video."
-                )
-                vae_path = gr.Textbox(
-                    label="VAE Path",
-                    value=os.path.join(MODEL_DIR, "hunyuan_video_vae_fp32.safetensors"),
-                    info="Path to the VAE model file."
-                )
-                llm_path = gr.Textbox(
-                    label="LLM Path",
-                    value=os.path.join(MODEL_DIR, "llava-llama-3-8b-text-encoder-tokenizer"),
-                    info="Path to the LLM's text tokenizer and encoder."
-                )
-                clip_path = gr.Textbox(
-                    label="CLIP Path",
-                    value=os.path.join(MODEL_DIR, "clip-vit-large-patch14"),
-                    info="Path to the CLIP model directory."
-                )
-                
-        gr.Markdown("### Step 2: Training\nConfigure your training parameters and start or stop the training process.")
+    with gr.Row():
         with gr.Column():
-            gr.Markdown("#### Training Parameters")
-            with gr.Row():
-                epochs = gr.Number(
-                    label="Epochs",
-                    value=1000,
-                    info="Total number of training epochs, Total Steps = ((Size of Dataset * Dataset Num Repeats) / (Batch Size * Gradient Accumulation Steps)) * Epochs"
-                )
-                batch_size = gr.Number(
-                    label="Batch Size",
-                    value=1,
-                    info="Batch size per GPU"
-                )
-                lr = gr.Number(
-                    label="Learning Rate",
-                    value=2e-5,
-                    step=0.0001,
-                    info="Optimizer learning rate"
-                )
-                save_every = gr.Number(
-                    label="Save Every N Epochs",
-                    value=2,
-                    info="Frequency to save checkpoints"
-                )
-            with gr.Row():
-                eval_every = gr.Number(
-                    label="Evaluate Every N Epochs",
-                    value=1,
-                    info="Frequency to perform evaluations"
-                )
-                rank = gr.Number(
-                    label="LoRA Rank",
-                    value=32,
-                    info="LoRA adapter rank"
-                )
-                dtype = gr.Dropdown(
-                    label="LoRA Dtype",
-                    choices=['float32', 'float16', 'bfloat16', 'float8'],
-                    value="bfloat16",
-                )
-                gradient_accumulation_steps = gr.Number(
-                    label="Gradient Accumulation Steps",
-                    value=4,
-                    info="Micro-batch accumulation steps"
-                )
+            dataset_path = gr.Textbox(
+                label="Dataset Path",
+                value=BASE_DATASET_DIR,
+                interactive=False
+            )
+            config_dir = gr.Textbox(
+                label="Config Path",
+                value=CONFIG_DIR,
+                interactive=False
+            )
+            output_dir = gr.Textbox(
+                label="Output Path",
+                value=OUTPUT_DIR,
+                interactive=False
+            )
+    
+    create_dataset_button.click(
+        fn=handle_start_dataset,
+        inputs=dataset_name_input,
+        outputs=[upload_status, current_dataset_state, create_dataset_button, upload_files, dataset_path] #, download_button, download_zip]
+    )
+     
+   
+   
+    dataset_option.change(
+        fn=toggle_dataset_option,
+        inputs=dataset_option,
+        outputs=[create_new_container, select_existing_container, existing_datasets, dataset_name_input, upload_status, dataset_path, create_dataset_button, upload_files] #, download_button]
+    )
+    
+    # Update config path and output path
+    def update_config_output_path(dataset_path):
+        config_path = os.path.join(CONFIG_DIR, os.path.basename(dataset_path))
+        output_path = os.path.join(OUTPUT_DIR, os.path.basename(dataset_path))
+        return config_path, output_path
+    
+     
+    # Update gallery when dataset path changes
+    dataset_path.change(
+        fn=lambda path: show_media(path),
+        inputs=dataset_path,
+        outputs=gallery
+    )
+    
+    dataset_path.change(
+        fn=update_config_output_path,
+        inputs=dataset_path,
+        outputs=[config_dir, output_dir]
+    )
+    
+    
+    
+    # Handle Models Configurations
+    gr.Markdown("#### Models Configurations")
+    with gr.Row():
+        with gr.Column():
+            transformer_path = gr.Textbox(
+                label="Transformer Path",
+                value=os.path.join(MODEL_DIR, "hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors"),
+                info="Path to the transformer model weights for Hunyuan Video."
+            )
+            vae_path = gr.Textbox(
+                label="VAE Path",
+                value=os.path.join(MODEL_DIR, "hunyuan_video_vae_fp32.safetensors"),
+                info="Path to the VAE model file."
+            )
+            llm_path = gr.Textbox(
+                label="LLM Path",
+                value=os.path.join(MODEL_DIR, "llava-llama-3-8b-text-encoder-tokenizer"),
+                info="Path to the LLM's text tokenizer and encoder."
+            )
+            clip_path = gr.Textbox(
+                label="CLIP Path",
+                value=os.path.join(MODEL_DIR, "clip-vit-large-patch14"),
+                info="Path to the CLIP model directory."
+            )
             
-            # Dataset configuration fields
-            gr.Markdown("#### Dataset Configuration")
-            with gr.Row():
-                sep = gr.Checkbox(
-                    label="Enable AR Bucket",
-                    value=True,
-                    info="Enable aspect ratio bucketing (Min and max aspect ratios, given as width/height ratio.)"
-                )
-                
-                enable_ar_bucket = gr.Checkbox(
-                    label="Enable AR Bucket",
-                    value=True,
-                    info="Enable aspect ratio bucketing (Min and max aspect ratios, given as width/height ratio.)"
-                )
-                
-            with gr.Row():
-                min_ar = gr.Number(
-                    label="Minimum Aspect Ratio",
-                    value=0.5,
-                    step=0.1,
-                    info="Minimum aspect ratio for AR buckets"
-                )
-                max_ar = gr.Number(
-                    label="Maximum Aspect Ratio",
-                    value=2.0,
-                    step=0.1,
-                    info="Maximum aspect ratio for AR buckets"
-                )
-                num_ar_buckets = gr.Number(
-                    label="Number of AR Buckets",
-                    value=7,
-                    step=1,
-                    info="Number of aspect ratio buckets (Total number of aspect ratio buckets, evenly spaced (in log space) between min_ar and max_ar)"
-                )
-                
-            with gr.Row():
-                ar_buckets = gr.Textbox(
-                    label="AR Buckets (optional)",
-                    value="",
-                    info="Can manually specify AR Buckets instead of using the range-style config above, width/height ratio, or (width, height) pair. Example: [[512, 512], [448, 576]] or [1.0, 1.5]"
-                )
-                frame_buckets = gr.Textbox(
-                    label="Frame Buckets",
-                    value="[1, 33, 65]",
-                    info="Videos will be assigned to the first frame bucket that the video is greater than or equal to in length. Example: [1, 33, 65], 1 for images"
-                )
+    gr.Markdown("### Step 2: Training\nConfigure your training parameters and start or stop the training process.")
+    with gr.Column():
+        gr.Markdown("#### Training Parameters")
+        with gr.Row():
+            epochs = gr.Number(
+                label="Epochs",
+                value=1000,
+                info="Total number of training epochs, Total Steps = ((Size of Dataset * Dataset Num Repeats) / (Batch Size * Gradient Accumulation Steps)) * Epochs"
+            )
+            batch_size = gr.Number(
+                label="Batch Size",
+                value=1,
+                info="Batch size per GPU"
+            )
+            lr = gr.Number(
+                label="Learning Rate",
+                value=2e-5,
+                step=0.0001,
+                info="Optimizer learning rate"
+            )
+            save_every = gr.Number(
+                label="Save Every N Epochs",
+                value=2,
+                info="Frequency to save checkpoints"
+            )
+        with gr.Row():
+            eval_every = gr.Number(
+                label="Evaluate Every N Epochs",
+                value=1,
+                info="Frequency to perform evaluations"
+            )
+            rank = gr.Number(
+                label="LoRA Rank",
+                value=32,
+                info="LoRA adapter rank"
+            )
+            dtype = gr.Dropdown(
+                label="LoRA Dtype",
+                choices=['float32', 'float16', 'bfloat16', 'float8'],
+                value="bfloat16",
+            )
+            gradient_accumulation_steps = gr.Number(
+                label="Gradient Accumulation Steps",
+                value=4,
+                info="Micro-batch accumulation steps"
+            )
+        
+        # Dataset configuration fields
+        gr.Markdown("#### Dataset Configuration")
+        with gr.Row():
+            enable_ar_bucket = gr.Checkbox(
+                label="Enable AR Bucket",
+                value=True,
+                info="Enable aspect ratio bucketing (Min and max aspect ratios, given as width/height ratio.)"
+            )
             
-            with gr.Row():
-                num_repeats = gr.Number(
-                    label="Dataset Num Repeats",
-                    value=10,
-                    info="Number of times to duplicate the dataset"
-                )
-                resolutions_input = gr.Textbox(
-                    label="Resolutions",
-                    value="[512]",
-                    info="Resolutions to train on, given as a list. Example: [512] or [512, 768, 1024]"
-                )
-                    
-            gr.Markdown("#### Optimizer Parameters")
-            with gr.Row():
-                optimizer_type = gr.Textbox(
-                    label="Optimizer Type",
-                    value="adamw_optimi",
-                    info="Type of optimizer (adamw, adamw8bit, adamw_optimi, stableadamw, sgd, adamw8bitKahan, offload))"
-                )
-                betas = gr.Textbox(
-                    label="Betas",
-                    value="[0.9, 0.99]",
-                    info="Betas for the optimizer"
-                )
-            with gr.Row():
-                weight_decay = gr.Number(
-                    label="Weight Decay",
-                    value=0.01,
-                    step=0.0001,
-                    info="Weight decay for regularization"
-                )
-                eps = gr.Number(
-                    label="Epsilon",
-                    value=1e-8,
-                    step=0.0000001,
-                    info="Epsilon for the optimizer"
-                )
+        with gr.Row():
+            min_ar = gr.Number(
+                label="Minimum Aspect Ratio",
+                value=0.5,
+                step=0.1,
+                info="Minimum aspect ratio for AR buckets"
+            )
+            max_ar = gr.Number(
+                label="Maximum Aspect Ratio",
+                value=2.0,
+                step=0.1,
+                info="Maximum aspect ratio for AR buckets"
+            )
+            num_ar_buckets = gr.Number(
+                label="Number of AR Buckets",
+                value=7,
+                step=1,
+                info="Number of aspect ratio buckets (Total number of aspect ratio buckets, evenly spaced (in log space) between min_ar and max_ar)"
+            )
             
-            # Additional training parameters
-            gr.Markdown("#### Additional Training Parameters")
-            with gr.Row():
-                gradient_clipping = gr.Number(
-                    label="Gradient Clipping",
-                    value=1.0,
-                    step=0.1,
-                    info="Value for gradient clipping"
-                )
-                warmup_steps = gr.Number(
-                    label="Warmup Steps",
-                    value=100,
-                    step=10,
-                    info="Number of warmup steps"
-                )
-            with gr.Row():
-                eval_before_first_step = gr.Checkbox(
-                    label="Evaluate Before First Step",
-                    value=True,
-                    info="Perform evaluation before the first training step"
-                )
-                eval_micro_batch_size_per_gpu = gr.Number(
-                    label="Eval Micro Batch Size Per GPU",
-                    value=1,
-                    info="Batch size for evaluation per GPU"
-                )
-                eval_gradient_accumulation_steps = gr.Number(
-                    label="Eval Gradient Accumulation Steps",
-                    value=1,
-                    info="Gradient accumulation steps for evaluation"
-                )
-                checkpoint_every_n_minutes = gr.Number(
-                    label="Checkpoint Every N Minutes",
-                    value=120,
-                    info="""Frequency to create checkpoints (in minutes), Used to restore training. 
-                    Note: Be careful with the time set here as the saved checkpoints take up a lot of disk space."""
-                )
-            with gr.Row():
-                activation_checkpointing = gr.Checkbox(
-                    label="Activation Checkpointing",
-                    value=True,
-                    info="Enable activation checkpointing to save memory"
-                )
-                partition_method = gr.Textbox(
-                    label="Partition Method",
-                    value="parameters",
-                    info="Method for partitioning (e.g., parameters)"
-                )
-                save_dtype = gr.Dropdown(
-                    label="Save Dtype",
-                    choices=['bfloat16', 'float16', 'float32'],
-                    value="bfloat16",
-                    info="Data type to save model checkpoints"
-                )
-            with gr.Row():
-                caching_batch_size = gr.Number(
-                    label="Caching Batch Size",
-                    value=1,
-                    info="Batch size for caching"
-                )
-                steps_per_print = gr.Number(
-                    label="Steps Per Print",
-                    value=1,
-                    info="Frequency to print logs to console"
-                )
-                video_clip_mode = gr.Textbox(
-                    label="Video Clip Mode",
-                    value="single_middle",
-                    info="""single_beginning: one clip starting at the beginning of the video,
-                        single_middle: default, one clip from the middle of the video (cutting off the start and end equally),
-                        multiple_overlapping: extract the minimum number of clips to cover the full range of the video. They might overlap some."""
-                )
+        with gr.Row():
+            ar_buckets = gr.Textbox(
+                label="AR Buckets (optional)",
+                value="",
+                info="Can manually specify AR Buckets instead of using the range-style config above, width/height ratio, or (width, height) pair. Example: [[512, 512], [448, 576]] or [1.0, 1.5]"
+            )
+            frame_buckets = gr.Textbox(
+                label="Frame Buckets",
+                value="[1, 33, 65]",
+                info="Videos will be assigned to the first frame bucket that the video is greater than or equal to in length. Example: [1, 33, 65], 1 for images"
+            )
+        
+        with gr.Row():
+            num_repeats = gr.Number(
+                label="Dataset Num Repeats",
+                value=10,
+                info="Number of times to duplicate the dataset"
+            )
+            resolutions_input = gr.Textbox(
+                label="Resolutions",
+                value="[512]",
+                info="Resolutions to train on, given as a list. Example: [512] or [512, 768, 1024] or [[512, 512], [1280, 720]], defining only one side it will be a square, [512] = 512x512"
+            )
+                
+        gr.Markdown("#### Optimizer Parameters")
+        with gr.Row():
+            optimizer_type = gr.Textbox(
+                label="Optimizer Type",
+                value="adamw_optimi",
+                info="Type of optimizer (adamw, adamw8bit, adamw_optimi, stableadamw, sgd, adamw8bitKahan, offload))"
+            )
+            betas = gr.Textbox(
+                label="Betas",
+                value="[0.9, 0.99]",
+                info="Betas for the optimizer"
+            )
+        with gr.Row():
+            weight_decay = gr.Number(
+                label="Weight Decay",
+                value=0.01,
+                step=0.0001,
+                info="Weight decay for regularization"
+            )
+            eps = gr.Number(
+                label="Epsilon",
+                value=1e-8,
+                step=0.0000001,
+                info="Epsilon for the optimizer"
+            )
+        
+        # Additional training parameters
+        gr.Markdown("#### Additional Training Parameters")
+        with gr.Row():
+            gradient_clipping = gr.Number(
+                label="Gradient Clipping",
+                value=1.0,
+                step=0.1,
+                info="Value for gradient clipping"
+            )
+            warmup_steps = gr.Number(
+                label="Warmup Steps",
+                value=100,
+                step=10,
+                info="Number of warmup steps"
+            )
+        with gr.Row():
+            eval_before_first_step = gr.Checkbox(
+                label="Evaluate Before First Step",
+                value=True,
+                info="Perform evaluation before the first training step"
+            )
+            eval_micro_batch_size_per_gpu = gr.Number(
+                label="Eval Micro Batch Size Per GPU",
+                value=1,
+                info="Batch size for evaluation per GPU"
+            )
+            eval_gradient_accumulation_steps = gr.Number(
+                label="Eval Gradient Accumulation Steps",
+                value=1,
+                info="Gradient accumulation steps for evaluation"
+            )
+            checkpoint_every_n_minutes = gr.Number(
+                label="Checkpoint Every N Minutes",
+                value=120,
+                info="""Frequency to create checkpoints (in minutes), Used to restore training. 
+                Note: Be careful with the time set here as the saved checkpoints take up a lot of disk space."""
+            )
+        with gr.Row():
+            activation_checkpointing = gr.Checkbox(
+                label="Activation Checkpointing",
+                value=True,
+                info="Enable activation checkpointing to save memory"
+            )
+            partition_method = gr.Textbox(
+                label="Partition Method",
+                value="parameters",
+                info="Method for partitioning (e.g., parameters)"
+            )
+            save_dtype = gr.Dropdown(
+                label="Save Dtype",
+                choices=['bfloat16', 'float16', 'float32'],
+                value="bfloat16",
+                info="Data type to save model checkpoints"
+            )
+        with gr.Row():
+            caching_batch_size = gr.Number(
+                label="Caching Batch Size",
+                value=1,
+                info="Batch size for caching"
+            )
+            steps_per_print = gr.Number(
+                label="Steps Per Print",
+                value=1,
+                info="Frequency to print logs to console"
+            )
+            video_clip_mode = gr.Textbox(
+                label="Video Clip Mode",
+                value="single_middle",
+                info="""single_beginning: one clip starting at the beginning of the video,
+                       single_middle: default, one clip from the middle of the video (cutting off the start and end equally),
+                       multiple_overlapping: extract the minimum number of clips to cover the full range of the video. They might overlap some."""
+            )
+        
+        gr.Markdown("#### Monitoring Settings")
+        with gr.Row():
+            enable_wandb = gr.Checkbox(
+                label="Enable Wandb",
+                value=False,
+                info="Enable Wandb monitoring"
+            )
             
-            gr.Markdown("#### Monitoring Settings")
-            with gr.Row():
-                enable_wandb = gr.Checkbox(
-                    label="Enable Wandb",
-                    value=False,
-                    info="Enable Wandb monitoring"
-                )
-                
-                wandb_run_name = gr.Textbox(
-                    label="Wandb Run Name",
-                    info="Name of the wandb run",
-                    visible=False
-                )
-                
-                wandb_tracker_name = gr.Textbox(
-                    label="Wandb Tracker Name",
-                    info="Name of the wandb tracker",
-                    visible=False
-                )
-                
-                wandb_api_key = gr.Textbox(
-                    label="Wandb API Key",
-                    info="Wandb API Key (https://wandb.ai/authorize)",
-                    visible=False
-                )
-                
-                def toggle_enable_wandb(checked):
-                    return gr.update(visible=checked), gr.update(visible=checked), gr.update(visible=checked)
+            wandb_run_name = gr.Textbox(
+                label="Wandb Run Name",
+                info="Name of the wandb run",
+                visible=False
+            )
+            
+            wandb_tracker_name = gr.Textbox(
+                label="Wandb Tracker Name",
+                info="Name of the wandb tracker",
+                visible=False
+            )
+            
+            wandb_api_key = gr.Textbox(
+                label="Wandb API Key",
+                info="Wandb API Key (https://wandb.ai/authorize)",
+                visible=False
+            )
+            
+            def toggle_enable_wandb(checked):
+                return gr.update(visible=checked), gr.update(visible=checked), gr.update(visible=checked)
 
-                enable_wandb.change(
-                    toggle_enable_wandb,
-                    inputs=enable_wandb,
-                    outputs=[wandb_run_name, wandb_tracker_name, wandb_api_key]
-                )     
-        
-            with gr.Row():
-                with gr.Column(scale=1):
-                    resume_from_checkpoint = gr.Checkbox(label="Resume from last checkpoint", info="If this is your first training, do not check this box, because the output folder will not have a checkpoint (global_step....) and will cause an error")
-                    
-                    only_double_blocks = gr.Checkbox(label="Train only double blocks (Experimental)", info="This option will be used to train only double blocks, some people report that training only double blocks can reduce the amount of motion blur and improve the final quality of the video.")
-                    
-                    train_button = gr.Button("Start Training", visible=True)
-                    stop_button = gr.Button("Stop Training", visible=False)
-                    with gr.Row():
-                        with gr.Column(scale=1):
-                            output = gr.Textbox(
-                                label="Output Logs",
-                                lines=20,
-                                interactive=False,
-                                elem_id="log_box"
-                            )
-                            
-        hidden_config = gr.JSON(label="Hidden Configuration", visible=False)
-        
-        # Adding Download Section
-        gr.Markdown("### Download Files")
-        
+            enable_wandb.change(
+                toggle_enable_wandb,
+                inputs=enable_wandb,
+                outputs=[wandb_run_name, wandb_tracker_name, wandb_api_key]
+            )     
+    
         with gr.Row():
-            explorer = gr.FileExplorer(root_dir="/workspace", interactive=False, label="File Explorer")
-            
-            
-        with gr.Row():
-            with gr.Column():
-                download_options = gr.CheckboxGroup(["Outputs", "Dataset", "Configs"], label="Download Options"),
-                download_button = gr.Button("Download ZIP", visible=True)
-            download_zip = gr.File(label="Download ZIP", visible=True)
-            download_status = gr.Textbox(label="Download Status", interactive=False, visible=True)
-            
+            with gr.Column(scale=1):
+                resume_from_checkpoint = gr.Checkbox(label="Resume from last checkpoint", info="If this is your first training, do not check this box, because the output folder will not have a checkpoint (global_step....) and will cause an error")
+                
+                only_double_blocks = gr.Checkbox(label="Train only double blocks (Experimental)", info="This option will be used to train only double blocks, some people report that training only double blocks can reduce the amount of motion blur and improve the final quality of the video.")
+                
+                train_button = gr.Button("Start Training", visible=True)
+                stop_button = gr.Button("Stop Training", visible=False)
+                
+                # Add fields for displaying current step and epoch
+                with gr.Row():
+                    total_steps = gr.State(0)
+                    steps_per_epoch = gr.State(0)
+                    current_epoch_display = gr.Textbox(label="Epoch Progress", interactive=False, value="Epoch: N/A")
+                    current_step_display = gr.Textbox(label="Step Progress", interactive=False, value="Step: N/A")
+
+
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        output = gr.Textbox(
+                            label="Output Logs",
+                            lines=20,
+                            interactive=False,
+                            elem_id="log_box"
+                        )
+                        
+    hidden_config = gr.JSON(label="Hidden Configuration", visible=False)
+    
+     # Adding Download Section
+    gr.Markdown("### Download Files")
+    
+    with gr.Row():
+        explorer = gr.FileExplorer(root_dir="/workspace", interactive=True, label="File Explorer", file_count="single", elem_id="file_explorer")     
+        with gr.Column():   
+            gr.Markdown("### Select a single file from the file explorer for download.")
+            download_status = gr.Textbox(label="Single File Download Status", interactive=False)
+            download_file = gr.File(label="Download Single File", interactive=False)
         
-        def handle_train_click(
+
+            # Event: When a file is selected in the explorer
+        explorer.change(
+            fn=get_selected_file,
+            inputs=[explorer],
+            outputs=[download_file, download_status],
+        )
+            
+    with gr.Row():
+        with gr.Column():
+            download_options = gr.CheckboxGroup(["Outputs", "Dataset", "Configs"], label="Bulk Download Options"),
+            download_button = gr.Button("Download ZIP", visible=True)
+        download_zip = gr.File(label="Download ZIP", visible=True)
+        download_status = gr.Textbox(label="Bulk Download Status", interactive=False, visible=True)
+
+    
+    def handle_train_click(
+        dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
+        transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
+        gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode, resume_from_checkpoint, only_double_blocks, enable_wandb, wandb_run_name, wandb_tracker_name, wandb_api_key
+    ):
+        
+        with process_lock:
+            if process_dict:
+                return "A training process is already running. Please stop it before starting a new one.", training_process_pid, gr.update(interactive=False)
+            
+        message, pid = train_model(
             dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
             transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
             gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode, resume_from_checkpoint, only_double_blocks, enable_wandb, wandb_run_name, wandb_tracker_name, wandb_api_key
-        ):
-            
-            with process_lock:
-                if process_dict:
-                    return "A training process is already running. Please stop it before starting a new one.", training_process_pid, gr.update(interactive=False)
-                
-            message, pid = train_model(
-                dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
-                transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
-                gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode, resume_from_checkpoint, only_double_blocks, enable_wandb, wandb_run_name, wandb_tracker_name, wandb_api_key
-            )
-            
-            if pid:
-                # Disable the training button while training is active
-                return message, pid, gr.update(visible=False), gr.update(visible=True)
-            else:
-                return message, pid, gr.update(visible=True), gr.update(visible=False)
+        )
+        
+        if pid:
+            # Disable the training button while training is active
+            return message, pid, gr.update(visible=False), gr.update(visible=True)
+        else:
+            return message, pid, gr.update(visible=True), gr.update(visible=False)
 
         def handle_stop_click(pid):
             message = stop_training(pid)
             return message, gr.update(visible=True), gr.update(visible=False)
 
-        def refresh_logs(log_box, pid):
-            if pid is not None:
-                return update_logs(log_box, pid)
-            return log_box
-        
-        log_timer = gr.Timer(0.5, active=False) 
-        
-        log_timer.tick(
-            fn=refresh_logs,
-            inputs=[output, training_process_pid],
-            outputs=output
+    def refresh_logs(
+        log_box, 
+        pid, 
+        current_epoch_display, 
+        current_step_display, 
+        total_steps, 
+        steps_per_epoch, 
+        last_step, 
+        last_epoch
+    ):
+        new_logs = ""
+        updated_epoch = last_epoch
+        updated_step = last_step
+        total_steps_value = total_steps
+        steps_per_epoch_value = steps_per_epoch
+
+        while not log_queue.empty():
+            log_line = log_queue.get()
+            new_logs += log_line
+
+            # Extract total steps
+            if "Total steps:" in log_line:
+                try:
+                    total_steps_value = int(log_line.split("Total steps:")[1].strip())
+                except Exception as e:
+                    print(f"Error parsing total steps: {e}")
+
+            # Extract steps per epoch
+            if "Steps per epoch:" in log_line:
+                try:
+                    steps_per_epoch_value = int(log_line.split("Steps per epoch:")[1].strip())
+                except Exception as e:
+                    print(f"Error parsing steps per epoch: {e}")
+
+            # Extract step information
+            if "step=" in log_line:
+                try:
+                    updated_step = int(log_line.split("step=")[1].split(",")[0].strip())
+                except Exception as e:
+                    print(f"Error parsing step info: {e}")
+
+            # Extract epoch information
+            if "Started new epoch:" in log_line:
+                try:
+                    updated_epoch = int(log_line.split("Started new epoch:")[1].strip())
+                except Exception as e:
+                    print(f"Error parsing epoch info: {e}")
+
+        # Calculate progress
+        total_epochs = total_steps_value // steps_per_epoch_value if steps_per_epoch_value else 0
+        if updated_epoch is None:
+            updated_epoch = 1  # Default to epoch 1 if no epoch data is available
+
+        epoch_progress = f"Epoch: {updated_epoch} / {total_epochs}"
+        step_percentage = (updated_step / total_steps_value * 100) if total_steps_value else 0
+        step_progress = f"Step: {updated_step} / {total_steps_value} ({step_percentage:.1f}%)"
+
+        # Return updated values
+        return (
+            log_box + new_logs,
+            epoch_progress,
+            step_progress,
+            total_steps_value,
+            steps_per_epoch_value,
+            updated_step,
+            updated_epoch,
         )
-        
-        def activate_timer():
-            return gr.update(active=True)
-        
-        train_click = train_button.click(
-            fn=handle_train_click,
-            inputs=[
-                dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
-                transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
-                gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar,
-                num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step,
-                eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes,
-                activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
-                video_clip_mode, resume_from_checkpoint, only_double_blocks, enable_wandb, wandb_run_name, wandb_tracker_name, wandb_api_key
-            ],
-            outputs=[output, training_process_pid, train_button, stop_button],
-            api_name=None
-        ).then(
-            fn=lambda: gr.update(active=True),  # Activate the Timer
-            inputs=None,
-            outputs=log_timer
-        )
-        
-        def deactivate_timer():
-            return gr.update(active=False)
-        
-        stop_click = stop_button.click(
-            fn=handle_stop_click,
-            inputs=[training_process_pid],
-            outputs=[output,train_button, stop_button],
-            api_name=None
-        ).then(
-            fn=lambda: gr.update(active=False),  # Deactivate the Timer
-            inputs=None,
-            outputs=log_timer
-        )
-        
-        
-        # Handle Download Button Click
-        download_button.click(
-            fn=handle_download,
-            inputs=[dataset_path, download_options[0]],
-            outputs=[download_zip, download_status],
-            queue=True
-        )
-        
-        with gr.Row():
-            download_zip
-        
-        # Ensure that the "Download ZIP" button is only visible when a dataset is selected or created
-        download_button.click(
-            fn=lambda: gr.update(visible=True),
-            inputs=None,
-            outputs=download_zip
-        )
-        
-        # Handle selecting an existing dataset
-        existing_datasets.change(
-            fn=handle_select_existing,
-            inputs=existing_datasets,
-            outputs=[
-                dataset_path, 
-                config_dir, 
-                output_dir, 
-                upload_status, 
-                gallery,
-                # download_button,
-                download_status,
-                hidden_config 
-            ]
-        ).then(
-            fn=lambda config_vals: update_ui_with_config(config_vals),
-            inputs=hidden_config,  # Receives configuration values
-            outputs=[
-                epochs, batch_size, lr, save_every, eval_every, rank, only_double_blocks, dtype,
-                transformer_path, vae_path, llm_path, clip_path, optimizer_type,
-                betas, weight_decay, eps, gradient_accumulation_steps, num_repeats,
-                resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, ar_buckets,
-                frame_buckets, gradient_clipping, warmup_steps, eval_before_first_step,
-                eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
-                checkpoint_every_n_minutes, activation_checkpointing, partition_method,
-                save_dtype, caching_batch_size, steps_per_print, video_clip_mode, enable_wandb,
-                wandb_run_name, wandb_tracker_name, wandb_api_key
-            ]
-        )
+
+
+    # Persistent states for step and epoch tracking
+    last_step = gr.State(0)
+    last_epoch = gr.State(1)
+
+    # Timer to refresh logs
+    log_timer = gr.Timer(0.5, active=False)
+
+    # Connect refresh_logs to update the log box and progress displays
+    log_timer.tick(
+        fn=refresh_logs,
+        inputs=[
+            output,                  # Log box
+            training_process_pid,    # Process ID
+            current_epoch_display,   # Current epoch display
+            current_step_display,    # Current step display
+            total_steps,             # Total steps state
+            steps_per_epoch,         # Steps per epoch state
+            last_step,               # Last step state
+            last_epoch,              # Last epoch state
+        ],
+        outputs=[
+            output,                  # Updated log box
+            current_epoch_display,   # Updated epoch display
+            current_step_display,    # Updated step display
+            total_steps,             # Updated total steps state
+            steps_per_epoch,         # Updated steps per epoch state
+            last_step,               # Updated last step state
+            last_epoch,              # Updated last epoch state
+        ]
+    )
+
+    def activate_timer():
+        return gr.update(active=True)
     
-    with gr.Tab("Captioner"):
-        gr.Markdown("# Generate captions for your videos, audios and images using qinglong-captions")
-        gr.TextArea("Video System Prompt",)
+    train_click = train_button.click(
+        fn=handle_train_click,
+        inputs=[
+            dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
+            transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
+            gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar,
+            num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step,
+            eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes,
+            activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
+            video_clip_mode, resume_from_checkpoint, only_double_blocks, enable_wandb, wandb_run_name, wandb_tracker_name, wandb_api_key
+        ],
+        outputs=[output, training_process_pid, train_button, stop_button],
+        api_name=None
+    ).then(
+        fn=lambda: gr.update(active=True),  # Activate the Timer
+        inputs=None,
+        outputs=log_timer
+    )
     
+    def deactivate_timer():
+        return gr.update(active=False)
+    
+    stop_click = stop_button.click(
+        fn=handle_stop_click,
+        inputs=[training_process_pid],
+        outputs=[output,train_button, stop_button],
+        api_name=None
+    ).then(
+        fn=lambda: gr.update(active=False),  # Deactivate the Timer
+        inputs=None,
+        outputs=log_timer
+    )
+    
+    
+    # Handle Download Button Click
+    download_button.click(
+        fn=handle_download,
+        inputs=[dataset_path, download_options[0]],
+        outputs=[download_zip, download_status],
+        queue=True
+    )
+    
+    with gr.Row():
+        download_zip
+    
+    # Ensure that the "Download ZIP" button is only visible when a dataset is selected or created
+    download_button.click(
+        fn=lambda: gr.update(visible=True),
+        inputs=None,
+        outputs=download_zip
+    )
+    
+    # Handle selecting an existing dataset
+    existing_datasets.change(
+        fn=handle_select_existing,
+        inputs=existing_datasets,
+        outputs=[
+            dataset_path, 
+            config_dir, 
+            output_dir, 
+            upload_status, 
+            gallery,
+            # download_button,
+            download_status,
+            hidden_config 
+        ]
+    ).then(
+        fn=lambda config_vals: update_ui_with_config(config_vals),
+        inputs=hidden_config,  # Receives configuration values
+        outputs=[
+            epochs, batch_size, lr, save_every, eval_every, rank, only_double_blocks, dtype,
+            transformer_path, vae_path, llm_path, clip_path, optimizer_type,
+            betas, weight_decay, eps, gradient_accumulation_steps, num_repeats,
+            resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, ar_buckets,
+            frame_buckets, gradient_clipping, warmup_steps, eval_before_first_step,
+            eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
+            checkpoint_every_n_minutes, activation_checkpointing, partition_method,
+            save_dtype, caching_batch_size, steps_per_print, video_clip_mode, enable_wandb,
+            wandb_run_name, wandb_tracker_name, wandb_api_key
+        ]
+    )
     
     
 def parse_args():

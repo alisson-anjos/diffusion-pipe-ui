@@ -162,3 +162,6 @@ cython_debug/
 #.idea/
 .vscode/
 venv/
+/container-files
+start.bat
+stop.bat

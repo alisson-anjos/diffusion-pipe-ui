@@ -114,6 +114,7 @@ class SizeBucketDataset:
             print(Path(self.metadata_dataset[te_idx]['image_file']).stem)
         for ds in self.text_embedding_datasets:
             ret.update(ds[te_idx])
+        ret['caption'] = self.metadata_dataset[te_idx]['caption']
         return ret
 
     def __len__(self):
@@ -472,11 +473,15 @@ class Dataset:
         batch = self._collate(examples_for_this_dp_rank)
         return batch
 
-    # collates a list of dictionaries of tensors into a single dictionary of batched tensors
+    # Collates a list of feature dictionaries into a single dictionary of batched features.
+    # Each feature can be a tensor, list, or single item.
     def _collate(self, examples):
         ret = {}
-        for key in examples[0].keys():
-            ret[key] = torch.stack([example[key] for example in examples])
+        for key, value in examples[0].items():
+            if torch.is_tensor(value):
+                ret[key] = torch.stack([example[key] for example in examples])
+            else:
+                ret[key] = [example[key] for example in examples]
         return ret
 
     def cache_metadata(self, regenerate_cache=False):
@@ -655,6 +660,21 @@ def split_batch(batch, pieces):
     # Deepspeed works with a tuple of (features, labels), even if we don't provide a loss_fn to PipelineEngine,
     # and instead compute the loss ourselves in the model. It's okay to just return None for the labels here.
     return [(ex, None) for ex in split_examples]
+
+
+# Splits an example (feature dict) along the batch dimension into a list of examples.
+# Keeping this code because we might want to switch to this way of doing things eventually.
+# def split_batch(example, pieces):
+#     key, value = example.popitem()
+#     input_batch_size = len(value)
+#     example[key] = value
+#     split_size = input_batch_size // pieces
+#     examples = [{} for _ in range(pieces)]
+#     for key, value in example.items():
+#         assert len(value) == input_batch_size
+#         for i, j in enumerate(range(0, input_batch_size, split_size)):
+#             examples[i][key] = value[j:j+split_size]
+#     return examples
 
 
 # DataLoader that divides batches into microbatches for gradient accumulation steps when doing

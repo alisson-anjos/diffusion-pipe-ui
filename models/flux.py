@@ -153,7 +153,7 @@ class FluxPipeline(BasePipeline):
         return self.vae
 
     def get_text_encoders(self):
-        return self.text_encoder, self.text_encoder_2
+        return [self.text_encoder, self.text_encoder_2]
 
     def save_adapter(self, save_dir, peft_state_dict):
         adapter_type = self.config['adapter']['type']
@@ -290,7 +290,8 @@ class EmbeddingWrapper(nn.Module):
         # Don't know why I have to do this. I had to do it in qlora-pipe also.
         # Without it, you get RuntimeError: element 0 of tensors does not require grad and does not have a grad_fn
         for item in inputs:
-            item.requires_grad_(True)
+            if torch.is_floating_point(item):
+                item.requires_grad_(True)
         hidden_states, encoder_hidden_states, pooled_projections, timestep, img_ids, txt_ids, guidance, target = inputs
         hidden_states = self.x_embedder(hidden_states)
         timestep = timestep.to(hidden_states.dtype) * 1000

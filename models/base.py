@@ -146,14 +146,12 @@ class BasePipeline:
             raise NotImplementedError(f'Adapter type {adapter_type} is not implemented')
         self.peft_config = peft_config
         self.lora_model = peft.get_peft_model(self.transformer, peft_config)
-        #self.transformer.add_adapter(peft_config)
         if is_main_process():
             self.lora_model.print_trainable_parameters()
         for name, p in self.transformer.named_parameters():
             p.original_name = name
             if p.requires_grad:
                 p.data = p.data.to(adapter_config['dtype'])
-        return peft_config
 
     def save_adapter(self, save_dir, peft_state_dict):
         raise NotImplementedError()

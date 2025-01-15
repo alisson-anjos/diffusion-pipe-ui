@@ -1,5 +1,11 @@
 This repository is a fork of the original repository ([diffusion-pipe](https://github.com/tdrussell/diffusion-pipe)) but its objective is to provide a gradio interface as well as a docker image to facilitate training in any environment that supports docker (windows, linux) without any difficulty. You can also use the interface without using docker and you need to do the normal installation process that is in the original README and then instead of running train.py directly you can run gradio_interface.py.
 
+### Note
+
+If you have any very complex issues regarding the interface open a issue or send me a message on my civitiai profile.
+
+[My Profile](https://civitai.com/user/alissonerdx)
+
 ## Gradio Interface
 
 ![preview gradio](/preview-gradio.png)
@@ -12,12 +18,18 @@ This repository is a fork of the original repository ([diffusion-pipe](https://g
 - Optional automatic download of required models upon first initialization.
 - Tensorboard to visualize training loss/epoch
 - Jupyter Lab to manage files
+- Wandb
+
+### Improvements for the future
+- If the page is updated during training, restore the training data as well as the log
+- Generate samples between epochs to be able to visualize the influence of Lora.
 
 ### Prerequisites
 
 - **Docker:**  
-  Install Docker for your platform by following the official documentation:  
-  [Get Docker](https://docs.docker.com/get-docker/)
+  - Install Docker for your platform by following the official documentation: [Get Docker](https://docs.docker.com/get-docker/)
+  - [How to Install Docker on Windows](https://youtu.be/ZyBBv1JmnWQ)
+  - [How to Install Docker on Ubuntu](https://www.youtube.com/watch?v=J4dZ2jcpiP0) 
 
 - **GPU Support (optional):**  
   To utilize GPU acceleration (NVIDIA):
@@ -50,7 +62,7 @@ You can mount host directories to store models and training outputs outside the 
 ```bash
 docker run --gpus all -it \
   -v /path/to/models:/workspace/models \
-  -v /path/to/output:/workspace/output \
+  -v /path/to/outputs:/workspace/outputs \
   -v /path/to/datasets:/workspace/datasets \
   -v /path/to/configs:/workspace/configs \
   -p 8888:8888 \
@@ -61,17 +73,17 @@ docker run --gpus all -it \
 
 - Replace `/path/to/models`, `/path/to/output`, `/path/to/datasets` and `/path/to/configs`  with your desired host directories.
 - On Windows, for example:
-  ```bash
-  docker run --gpus all -it \
-    -v D:\AI\hunyuan\models:/workspace/models \
-    -v D:\AI\hunyuan\output:/workspace/output \
-    -v D:\AI\hunyuan\datasets:/workspace/datasets \
-    -v D:\AI\hunyuan\configs:/workspace/configs \
-    -p 8888:8888 \
-    -p 7860:7860 \
-    -p 6006:6006 \
-    alissonpereiraanjos/diffusion-pipe-interface:latest
-  ```
+```bash
+docker run --gpus all -it \
+  -v D:\AI\hunyuan\models:/workspace/models \
+  -v D:\AI\hunyuan\outputs:/workspace/outputs \
+  -v D:\AI\hunyuan\datasets:/workspace/datasets \
+  -v D:\AI\hunyuan\configs:/workspace/configs \
+  -p 8888:8888 \
+  -p 7860:7860 \
+  -p 6006:6006 \
+  alissonpereiraanjos/diffusion-pipe-interface:latest
+```
 
 #### Controlling Model Downloads
 
@@ -80,7 +92,7 @@ By default, the container downloads the required models during the first initial
 ```bash
 docker run --gpus all -it \
   -v /path/to/models:/workspace/models \
-  -v /path/to/output:/workspace/output \
+  -v /path/to/outputs:/workspace/outputs \
   -v /path/to/datasets:/workspace/datasets \
   -v /path/to/configs:/workspace/configs \
   -p 8888:8888 \
@@ -97,7 +109,7 @@ If you prefer to run the container in the background without an interactive term
 ```bash
 docker run --gpus all -d \
   -v /path/to/models:/workspace/models \
-  -v /path/to/output:/workspace/output \
+  -v /path/to/outputs:/workspace/outputs \
   -v /path/to/datasets:/workspace/datasets \
   -v /path/to/configs:/workspace/configs \
   -p 8888:8888 \
@@ -122,11 +134,13 @@ Access the Jupiter lab UI at `http://localhost:8888`.
 
 Use these options to tailor the setup to your environment and requirements.
 
-#### Update Image Docker
+## Update Image Docker (Important)
 
 To update the docker image with the new changes, if you already have the image on your machine, you can run the command: 
 
 `docker pull alissonpereiraanjos/diffusion-pipe-interface:latest`
+
+This is very important so that you have all the updates, it is good to always update the image before running the container, this is for those who run in Docker locally, because when running through the runpod this is done every time you create a new pod.
 
 ### Running on RunPod
 
@@ -139,6 +153,10 @@ This link takes you to the RunPod console, allowing you to set up a machine dire
 Tip: If you train often, I advise you to create a Network Volume in the runpod and use it in your pod, set the Volume to at least 100GB because then you will always have the models and data from your training in it and you will not waste your pod's time downloading the models every time.
 
 ![Network Volume Runpod](https://github.com/user-attachments/assets/32f7dc06-b7d1-4974-ac07-dce172c53c64)
+
+### Running on Vast.ai
+
+[Template](https://cloud.vast.ai/?ref_id=142589&creator_id=142589&name=Hunyuan%20Lora%20Train%20Simple%20Interface)
 
 
 # Original README (diffusion-pipe)

@@ -335,7 +335,7 @@ class HunyuanVideoPipeline(BasePipeline):
         return self.vae
 
     def get_text_encoders(self):
-        return (self.text_encoder, self.text_encoder_2)
+        return [self.text_encoder, self.text_encoder_2]
 
     def save_adapter(self, save_dir, peft_state_dict):
         self.peft_config.save_pretrained(save_dir)

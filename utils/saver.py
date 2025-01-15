@@ -45,10 +45,10 @@ def need_to_checkpoint(config, epoch=None):
 
 
 class Saver:
-    def __init__(self, args, config, peft_config, save_root, model, train_dataloader, model_engine, pipeline_model):
+    def __init__(self, args, config, is_adapter, save_root, model, train_dataloader, model_engine, pipeline_model):
         self.args = args
         self.config = config
-        self.peft_config = peft_config
+        self.is_adapter = is_adapter
         self.save_root = Path(save_root)
         self.model = model
         self.train_dataloader = train_dataloader
@@ -108,7 +108,9 @@ class Saver:
             shutil.rmtree(tmp_dir)
 
     def save_model(self, name):
-        if self.peft_config is not None:
+        if is_main_process():
+            print(f'Saving model to directory {name}')
+        if self.is_adapter:
             self.save_adapter(name)
         else:
             self.save_full_model(name)
@@ -125,19 +127,20 @@ class Saver:
         )
 
     def process_epoch(self, epoch, step):
+        checkpointed, saved = False, False
         if self.train_dataloader.epoch != epoch:
             if need_to_checkpoint(self.config, epoch):
                 self.save_checkpoint(step)
+                checkpointed = True
             if epoch % self.config['save_every_n_epochs'] == 0:
-                if is_main_process():
-                    print('Saving model')
                 self.save_model(f'epoch{epoch}')
+                saved = True
             epoch = self.train_dataloader.epoch
             if epoch > self.config['epochs']:
-                return None
+                return None, checkpointed, saved
             if is_main_process():
                 print(f'Started new epoch: {epoch}')
-        return epoch
+        return epoch, checkpointed, saved
 
     def process_step(self, step):
         # Look at some simple "signal files" the user can write to save and optionally quit manually

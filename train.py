@@ -153,16 +153,19 @@ def _evaluate(model_engine, eval_dataloaders, tb_writer, step, eval_gradient_acc
             losses.append(loss)
             if is_main_process():
                 tb_writer.add_scalar(f'{name}/loss_quantile_{quantile:.2f}', loss, step)
-                wandb.log({f'{name}/loss_quantile_{quantile:.2f}': loss, "step": step})
+                if wandb_enable:   
+                    wandb.log({f'{name}/loss_quantile_{quantile:.2f}': loss, "step": step})
         avg_loss = sum(losses) / len(losses)
         if is_main_process():
             tb_writer.add_scalar(f'{name}/loss', avg_loss, step)
-            wandb.log({f'{name}/loss': avg_loss, "step": step})
+            if wandb_enable:
+                wandb.log({f'{name}/loss': avg_loss, "step": step})
 
     duration = time.time() - start
     if is_main_process():
         tb_writer.add_scalar('eval/eval_time_sec', duration, step)
-        wandb.log({'eval/eval_time_sec': duration, "step": step})
+        if wandb_enable: 
+            wandb.log({'eval/eval_time_sec': duration, "step": step})
         pbar.close()
 
 
@@ -214,6 +217,9 @@ if __name__ == '__main__':
     elif model_type == 'hunyuan-video':
         from models import hunyuan_video
         model = hunyuan_video.HunyuanVideoPipeline(config)
+    elif model_type == 'sdxl':
+        from models import sdxl
+        model = sdxl.SDXLPipeline(config)
     else:
         raise NotImplementedError(f'Model type {model_type} is not implemented')
 
@@ -225,8 +231,8 @@ if __name__ == '__main__':
         wandb_api_key=config['monitoring']['wandb_api_key']
         logging_dir = config['monitoring']['log_dir']
         if wandb_api_key is not None and wandb_tracker_name is not None and wandb_run_name is not None:
-            wandb.init(project=wandb_tracker_name, config=config, name=wandb_run_name, dir=logging_dir)
             wandb.login(key=wandb_api_key)
+            wandb.init(project=wandb_tracker_name, config=config, name=wandb_run_name, dir=logging_dir)
             
     # import sys, PIL
     # test_image = sys.argv[1]
@@ -271,11 +277,12 @@ if __name__ == '__main__':
     model.load_diffusion_model()
 
     if adapter_config := config.get('adapter', None):
-        peft_config = model.configure_adapter(adapter_config)
+        model.configure_adapter(adapter_config)
+        is_adapter = True
         if init_from_existing := adapter_config.get('init_from_existing', None):
             model.load_adapter_weights(init_from_existing)
     else:
-        peft_config = None
+        is_adapter = False
 
     # if this is a new run, create a new dir for it
     if not resume_from_checkpoint and is_main_process():
@@ -462,7 +469,7 @@ if __name__ == '__main__':
 
     epoch = train_dataloader.epoch
     tb_writer = SummaryWriter(log_dir=run_dir) if is_main_process() else None
-    saver = utils.saver.Saver(args, config, peft_config, run_dir, model, train_dataloader, model_engine, pipeline_model)
+    saver = utils.saver.Saver(args, config, is_adapter, run_dir, model, train_dataloader, model_engine, pipeline_model)
 
     if config['eval_before_first_step'] and not resume_from_checkpoint:
         evaluate(model_engine, eval_dataloaders, tb_writer, 0, config['eval_gradient_accumulation_steps'])
@@ -478,12 +485,13 @@ if __name__ == '__main__':
         num_steps += 1
         train_dataloader.sync_epoch()
 
-        new_epoch = saver.process_epoch(epoch, step)
+        new_epoch, checkpointed, saved = saver.process_epoch(epoch, step)
         finished_epoch = True if new_epoch != epoch else False
 
         if is_main_process() and step % config['logging_steps'] == 0:
             tb_writer.add_scalar(f'train/loss', loss, step)
-            wandb.log({"train/loss": loss, "step": step})
+            if wandb_enable:
+                wandb.log({"train/loss": loss, "step": step})
 
         if (config['eval_every_n_steps'] and step % config['eval_every_n_steps'] == 0) or (finished_epoch and config['eval_every_n_epochs'] and epoch % config['eval_every_n_epochs'] == 0):
             evaluate(model_engine, eval_dataloaders, tb_writer, step, config['eval_gradient_accumulation_steps'])
@@ -491,7 +499,8 @@ if __name__ == '__main__':
         if finished_epoch:
             if is_main_process():
                 tb_writer.add_scalar(f'train/epoch_loss', epoch_loss/num_steps, epoch)
-                wandb.log({f'train/epoch_loss': epoch_loss/num_steps, "epoch": epoch})
+                if wandb_enable:
+                    wandb.log({f'train/epoch_loss': epoch_loss/num_steps, "epoch": epoch})
             epoch_loss = 0
             num_steps = 0
             epoch = new_epoch
@@ -500,6 +509,12 @@ if __name__ == '__main__':
 
         saver.process_step(step)
         step += 1
+
+    # Save final training state checkpoint and model, unless we just saved them.
+    if not checkpointed:
+        saver.save_checkpoint(step)
+    if not saved:
+        saver.save_model(f'epoch{epoch}')
 
     if is_main_process():
         print('TRAINING COMPLETE!')
