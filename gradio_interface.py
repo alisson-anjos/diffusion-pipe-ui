@@ -4,13 +4,8 @@ import subprocess
 import threading
 import gradio as gr
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 import json
-import torch
-import deepspeed
-from deepspeed import comm as dist
-import torch.multiprocessing
-from utils.patches import apply_patches
 import multiprocess as mp
 import argparse
 import toml
@@ -551,19 +546,17 @@ def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, sa
             wandb_tracker_name=wandb_tracker_name,
             wandb_api_key=wandb_api_key
         )
-
-        conda_activate_path = "/opt/conda/etc/profile.d/conda.sh"
-        conda_env_name = "pyenv"
+        
+        uv_activate_path = "/workspace/venv/bin/activate"
         num_gpus = os.getenv("NUM_GPUS", "1")
         
-        if not os.path.isfile(conda_activate_path):
-            return "Error: Conda activation script not found", None
+        if not os.path.isfile(uv_activate_path):
+            return "Error: UV virtual environment activation script not found", None
         
         resume_checkpoint =  "--resume_from_checkpoint" if resume_from_checkpoint else ""
         
         cmd = (
-            f"bash -c 'source {conda_activate_path} && "
-            f"conda activate {conda_env_name} && "
+            f"bash -c 'source {uv_activate_path} && "
             f"NCCL_P2P_DISABLE=1 NCCL_IB_DISABLE=1 {'NCCL_SHM_DISABLE=1' if int(num_gpus) > 1 else ''} deepspeed --num_gpus={num_gpus} "
             f"train.py --deepspeed --config {training_config_path} {resume_checkpoint}'"          
         )

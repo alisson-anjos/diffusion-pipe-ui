@@ -37,9 +37,9 @@ mkdir -p /workspace
 echo "Copying diffusion-pipe to /workspace..."
 cp -rf /diffusion-pipe /workspace/
 
-echo "Updating diffusion-pipe..."
-cd /workspace/diffusion-pipe 
-git pull --verbose
+# echo "Updating diffusion-pipe..."
+# cd /workspace/diffusion-pipe 
+# git pull --verbose
 
 cp -f /entrypoint.sh /workspace/entrypoint.sh
 

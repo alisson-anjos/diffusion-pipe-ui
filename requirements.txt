@@ -1,5 +1,3 @@
-torch==2.5.1
-torchvision==0.20.1
 deepspeed
 toml
 transformers
@@ -19,7 +17,6 @@ av
 einops
 accelerate
 loguru
-flash-attn
 gradio
 wandb
-sageattention==1.0.6
+#sageattention==1.0.6

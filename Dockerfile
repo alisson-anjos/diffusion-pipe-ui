@@ -1,4 +1,4 @@
-ARG CUDA_VERSION="12.4.1"
+ARG CUDA_VERSION="12.8.0"
 ARG CUDNN_VERSION=""
 ARG UBUNTU_VERSION="22.04"
 ARG DOCKER_FROM=nvidia/cuda:$CUDA_VERSION-cudnn$CUDNN_VERSION-devel-ubuntu$UBUNTU_VERSION
@@ -12,8 +12,6 @@ WORKDIR /
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 ENV PYTHON_VERSION=3.12
-ENV CONDA_DIR=/opt/conda
-ENV PATH="$CONDA_DIR/bin:$PATH"
 ENV NUM_GPUS=1
 
 # Install dependencies required for Miniconda
@@ -46,40 +44,27 @@ RUN apt-get update -y && \
     && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+    
+RUN add-apt-repository ppa:ubuntu-toolchain-r/test && apt-get update && apt-get install libstdc++6 -y
 
-# Download and install Miniconda
-RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh && \
-    bash miniconda.sh -b -p $CONDA_DIR && \
-    rm miniconda.sh && \
-    $CONDA_DIR/bin/conda init bash
+ENV LD_LIBRARY_PATH=/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH
 
-# Create environment with Python 3.12 and MPI
-RUN $CONDA_DIR/bin/conda create -n pyenv python=3.12 -y && \
-    $CONDA_DIR/bin/conda install -n pyenv -c conda-forge openmpi mpi4py -y 
-
-
-# Define PyTorch versions via arguments
-ARG PYTORCH="2.5.1"
-ARG CUDA="124"
-
-# Install PyTorch with specified version and CUDA
-RUN $CONDA_DIR/bin/conda run -n pyenv \
-    pip install torch==$PYTORCH torchvision torchaudio --index-url https://download.pytorch.org/whl/cu$CUDA
-
-RUN $CONDA_DIR/bin/conda install -n pyenv nvidia/label/cuda-12.4.1::cuda-nvcc
-
-
-# Install git lfs
-RUN apt-get update && apt-get install -y git-lfs && git lfs install
-
-# Install nginx
-RUN apt-get update && \
-    apt-get install -y nginx
+RUN apt-get update && apt-get install -y git-lfs && git lfs install && apt-get install -y nginx
 
 COPY docker/default /etc/nginx/sites-available/default
 
-# Add Jupyter Notebook
-RUN pip install jupyterlab ipywidgets jupyter-archive jupyter_contrib_nbextensions nodejs
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+
+COPY requirements.txt .
+
+RUN uv pip install jupyterlab ipywidgets jupyter-archive jupyter_contrib_nbextensions nodejs --system
+
+RUN uv pip install -U "huggingface_hub[cli]" --system
+
+COPY triton-3.2.0-cp312-cp312-linux_x86_64.whl .
+COPY sageattention-2.1.1-cp312-cp312-linux_x86_64.whl .
+COPY flash_attn-2.7.4.post1-cp312-cp312-linux_x86_64.whl .
+COPY transformers-4.49.0.dev0-py3-none-any.whl .
 
 EXPOSE 8888
 

@@ -165,3 +165,5 @@ venv/
 /container-files
 start.bat
 stop.bat
+
+*.whl
