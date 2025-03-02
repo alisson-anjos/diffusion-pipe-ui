@@ -70,40 +70,46 @@ class PreprocessMediaFile:
         if self.support_video:
             assert self.framerate
 
-    def __call__(self, filepath, size_bucket):
-        width, height, frames = size_bucket
-        height_rounded = round_to_nearest_multiple(height, self.round_height)
-        width_rounded = round_to_nearest_multiple(width, self.round_width)
-        frames_rounded = round_down_to_multiple(frames - 1, self.round_frames) + 1
-
+    def __call__(self, filepath, size_bucket=None):
         is_video = (Path(filepath).suffix in VIDEO_EXTENSIONS)
         if is_video:
             assert self.support_video
             num_frames = 0
             for frame in imageio.v3.imiter(filepath, fps=self.framerate):
                 num_frames += 1
-            frames = imageio.v3.imiter(filepath, fps=self.framerate)
+                height, width = frame.shape[:2]
+            video = imageio.v3.imiter(filepath, fps=self.framerate)
         else:
             num_frames = 1
             pil_img = Image.open(filepath)
-            frames = [pil_img]
+            height, width = pil_img.height, pil_img.width
+            video = [pil_img]
 
-        video = torch.empty((num_frames, 3, height_rounded, width_rounded))
-        for i, frame in enumerate(frames):
+        if size_bucket is not None:
+            size_bucket_width, size_bucket_height, size_bucket_frames = size_bucket
+        else:
+            size_bucket_width, size_bucket_height, size_bucket_frames = width, height, num_frames
+
+        height_rounded = round_to_nearest_multiple(size_bucket_height, self.round_height)
+        width_rounded = round_to_nearest_multiple(size_bucket_width, self.round_width)
+        frames_rounded = round_down_to_multiple(size_bucket_frames - 1, self.round_frames) + 1
+
+        resized_video = torch.empty((num_frames, 3, height_rounded, width_rounded))
+        for i, frame in enumerate(video):
             if not isinstance(frame, Image.Image):
                 frame = torchvision.transforms.functional.to_pil_image(frame)
             cropped_image = convert_crop_and_resize(frame, (width_rounded, height_rounded))
-            video[i, ...] = self.pil_to_tensor(cropped_image)
+            resized_video[i, ...] = self.pil_to_tensor(cropped_image)
 
         if not self.support_video:
-            return [video.squeeze(0)]
+            return [resized_video.squeeze(0)]
 
         # (num_frames, channels, height, width) -> (channels, num_frames, height, width)
-        video = torch.permute(video, (1, 0, 2, 3))
+        resized_video = torch.permute(resized_video, (1, 0, 2, 3))
         if not is_video:
-            return [video]
+            return [resized_video]
         else:
-            return extract_clips(video, frames_rounded, self.video_clip_mode)
+            return extract_clips(resized_video, frames_rounded, self.video_clip_mode)
 
 
 class BasePipeline:
@@ -159,7 +165,12 @@ class BasePipeline:
     def load_adapter_weights(self, adapter_path):
         if is_main_process():
             print(f'Loading adapter weights from path {adapter_path}')
-        adapter_state_dict = safetensors.torch.load_file(Path(adapter_path) / 'adapter_model.safetensors')
+        safetensors_files = list(Path(adapter_path).glob('*.safetensors'))
+        if len(safetensors_files) == 0:
+            raise RuntimeError(f'No safetensors file found in {adapter_path}')
+        if len(safetensors_files) > 1:
+            raise RuntimeError(f'Multiple safetensors files found in {adapter_path}')
+        adapter_state_dict = safetensors.torch.load_file(safetensors_files[0])
         modified_state_dict = {}
         model_parameters = set(name for name, p in self.transformer.named_parameters())
         for k, v in adapter_state_dict.items():
@@ -189,3 +200,11 @@ class BasePipeline:
 
     def to_layers(self):
         raise NotImplementedError()
+
+    def model_specific_dataset_config_validation(self, dataset_config):
+        pass
+
+    # Get param groups that will be passed into the optimizer. Models can override this, e.g. SDXL
+    # supports separate learning rates for unet and text encoders.
+    def get_param_groups(self, parameters):
+        return parameters

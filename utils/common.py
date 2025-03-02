@@ -52,6 +52,13 @@ def load_safetensors(path):
     return tensors
 
 
+def load_state_dict(path):
+    if path.endswith('.safetensors'):
+        return load_safetensors(path)
+    else:
+        return torch.load(path, weights_only=True)
+
+
 def round_to_nearest_multiple(x, multiple):
     return int(round(x / multiple) * multiple)
 

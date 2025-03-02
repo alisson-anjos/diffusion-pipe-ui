@@ -1,3 +1,5 @@
+torch
+torchvision
 deepspeed
 toml
 transformers
@@ -17,6 +19,13 @@ av
 einops
 accelerate
 loguru
+flash-attn
+omegaconf
+iopath
+termcolor
+hydra-core
+easydict
+ftfy
 gradio
 wandb
 #sageattention==1.0.6

@@ -35,9 +35,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--config', help='Path to TOML configuration file.')
 parser.add_argument('--local_rank', type=int, default=-1,
                     help='local rank passed from distributed launcher')
-parser.add_argument('--resume_from_checkpoint', action='store_true', default=None, help='resume training from the most recent checkpoint')
+parser.add_argument('--resume_from_checkpoint', nargs='?', const=True, default=None,
+                    help='resume training from checkpoint. If no value is provided, resume from the most recent checkpoint. If a folder name is provided, resume from that specific folder.')
 parser.add_argument('--regenerate_cache', action='store_true', default=None, help='Force regenerate cache. Useful if none of the files have changed but their contents have, e.g. modified captions.')
 parser.add_argument('--cache_only', action='store_true', default=None, help='Cache model inputs then exit.')
+parser.add_argument('--i_know_what_i_am_doing', action='store_true', default=None, help="Skip certain checks and overrides. You may end up using settings that won't work.")
 parser = deepspeed.add_config_arguments(parser)
 args = parser.parse_args()
 
@@ -222,6 +224,15 @@ if __name__ == '__main__':
     elif model_type == 'sdxl':
         from models import sdxl
         model = sdxl.SDXLPipeline(config)
+    elif model_type == 'cosmos':
+        from models import cosmos
+        model = cosmos.CosmosPipeline(config)
+    elif model_type == 'lumina_2':
+        from models import lumina_2
+        model = lumina_2.Lumina2Pipeline(config)
+    elif model_type == 'wan':
+        from models import wan
+        model = wan.WanPipeline(config)
     else:
         raise NotImplementedError(f'Model type {model_type} is not implemented')
 
@@ -247,16 +258,18 @@ if __name__ == '__main__':
 
     with open(config['dataset']) as f:
         dataset_config = toml.load(f)
+    gradient_release = config['optimizer'].get('gradient_release', False)
     ds_config = {
         'train_micro_batch_size_per_gpu': config.get('micro_batch_size_per_gpu', 1),
         'gradient_accumulation_steps': config.get('gradient_accumulation_steps', 1),
-        'gradient_clipping': config.get('gradient_clipping', 1.0),
+        # Can't do gradient clipping with gradient release, since there are no grads at the end of the step anymore.
+        'gradient_clipping': 0. if gradient_release else config.get('gradient_clipping', 1.0),
         'steps_per_print': config.get('steps_per_print', 1),
     }
     caching_batch_size = config.get('caching_batch_size', 1)
     dataset_manager = dataset_util.DatasetManager(model, regenerate_cache=regenerate_cache, caching_batch_size=caching_batch_size)
 
-    train_data = dataset_util.Dataset(dataset_config, model)
+    train_data = dataset_util.Dataset(dataset_config, model, skip_dataset_validation=args.i_know_what_i_am_doing)
     dataset_manager.register(train_data)
 
     eval_data_map = {}
@@ -269,7 +282,7 @@ if __name__ == '__main__':
             config_path = eval_dataset['config']
         with open(config_path) as f:
             eval_dataset_config = toml.load(f)
-        eval_data_map[name] = dataset_util.Dataset(eval_dataset_config, model)
+        eval_data_map[name] = dataset_util.Dataset(eval_dataset_config, model, skip_dataset_validation=args.i_know_what_i_am_doing)
         dataset_manager.register(eval_data_map[name])
 
     dataset_manager.cache()
@@ -279,9 +292,14 @@ if __name__ == '__main__':
     model.load_diffusion_model()
 
     if adapter_config := config.get('adapter', None):
-        model.configure_adapter(adapter_config)
+        init_from_existing = adapter_config.get('init_from_existing', None)
+        # SDXL is special. LoRAs are saved in Kohya sd-scripts format, which is very difficult to load the state_dict into
+        # an adapter we already configured. So, for SDXL, load_adapter_weights will use a Diffusers method to create and
+        # load the adapter all at once from the sd-scripts format safetensors file.
+        if not (init_from_existing and model_type == 'sdxl'):
+            model.configure_adapter(adapter_config)
         is_adapter = True
-        if init_from_existing := adapter_config.get('init_from_existing', None):
+        if init_from_existing:
             model.load_adapter_weights(init_from_existing)
     else:
         is_adapter = False
@@ -296,7 +314,14 @@ if __name__ == '__main__':
             shutil.copy(dataset_config_path, run_dir)
     # wait for all processes then get the most recent dir (may have just been created)
     dist.barrier()
-    run_dir = get_most_recent_run_dir(config['output_dir'])
+    if resume_from_checkpoint is True:  # No specific folder provided, use most recent
+        run_dir = get_most_recent_run_dir(config['output_dir'])
+    elif isinstance(resume_from_checkpoint, str):  # Specific folder provided
+        run_dir = os.path.join(config['output_dir'], resume_from_checkpoint)
+        if not os.path.exists(run_dir):
+            raise ValueError(f"Checkpoint directory {run_dir} does not exist")
+    else:  # Not resuming, use most recent (newly created) dir
+        run_dir = get_most_recent_run_dir(config['output_dir'])
 
     layers = model.to_layers()
     additional_pipeline_module_kwargs = {}
@@ -361,7 +386,7 @@ if __name__ == '__main__':
             # As part of this, any grads that are None are set to zeros. We're doing gradient release to save memory,
             # so we have to avoid this.
             def _exec_reduce_grads(self):
-                assert self.mpu.get_data_parallel_world_size() == 1, 'Data parallel world size must be 1. Make sure pipeline_stages = num_gpus.'
+                assert self.mpu.get_data_parallel_world_size() == 1, 'When using gradient release, data parallel world size must be 1. Make sure pipeline_stages = num_gpus.'
                 return
             deepspeed.runtime.pipe.engine.PipelineEngine._INSTRUCTION_MAP[deepspeed.runtime.pipe.schedule.ReduceGrads] = _exec_reduce_grads
 
@@ -386,7 +411,17 @@ if __name__ == '__main__':
             if 'momentum' in kwargs:
                 kwargs['momentum'] = kwargs['momentum'] ** (1/gas)
 
-            optimizer_dict = {p: klass([p], **kwargs) for p in model_parameters}
+            optimizer_dict = {}
+            for pg in model.get_param_groups(model_parameters):
+                param_kwargs = kwargs.copy()
+                if isinstance(pg, dict):
+                    # param group
+                    for p in pg['params']:
+                        param_kwargs['lr'] = pg['lr']
+                        optimizer_dict[p] = klass([p], **param_kwargs)
+                else:
+                    # param
+                    optimizer_dict[pg] = klass([pg], **param_kwargs)
 
             def optimizer_hook(p):
                 optimizer_dict[p].step()
@@ -398,6 +433,7 @@ if __name__ == '__main__':
             from optimizers import gradient_release
             return gradient_release.GradientReleaseOptimizerWrapper(list(optimizer_dict.values()))
         else:
+            model_parameters = model.get_param_groups(model_parameters)
             return klass(model_parameters, *args, **kwargs)
 
     model_engine, optimizer, _, _ = deepspeed.initialize(

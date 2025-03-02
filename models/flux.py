@@ -74,6 +74,9 @@ BFL_TO_DIFFUSERS_MAP = {
 }
 
 
+KEEP_IN_HIGH_PRECISION = ['norm', 'bias', 'time_text_embed', 'context_embedder', 'x_embedder']
+
+
 def make_diffusers_to_bfl_map(num_double_blocks: int = NUM_DOUBLE_BLOCKS, num_single_blocks: int = NUM_SINGLE_BLOCKS) -> dict[str, tuple[int, str]]:
     # make reverse map from diffusers map
     diffusers_to_bfl_map = {}  # key: diffusers_key, value: (index, bfl_key)
@@ -150,9 +153,8 @@ class FluxPipeline(BasePipeline):
     def __init__(self, config):
         self.config = config
         self.model_config = self.config['model']
-        if 'transformer_dtype' in self.model_config:
-            raise NotImplementedError('Flux does not currently support transformer_dtype (e.g. float8)')
         dtype = self.model_config['dtype']
+        transformer_dtype = self.model_config.get('transformer_dtype', dtype)
 
         if transformer_path := self.model_config.get('transformer_path', None):
             if is_main_process():
@@ -173,6 +175,10 @@ class FluxPipeline(BasePipeline):
             if is_main_process():
                 print('Bypassing Flux guidance')
             bypass_flux_guidance(transformer)
+
+        for name, p in transformer.named_parameters():
+            if not (any(x in name for x in KEEP_IN_HIGH_PRECISION) or name.startswith('proj_out')):
+                p.data = p.data.to(transformer_dtype)
 
         self.diffusers_pipeline = diffusers.FluxPipeline.from_pretrained(self.model_config['diffusers_path'], torch_dtype=dtype, transformer=transformer)
 
@@ -273,15 +279,25 @@ class FluxPipeline(BasePipeline):
             img_ids = img_ids.unsqueeze(0).repeat((bs, 1, 1))
         txt_ids = torch.zeros(bs, t5_embed.shape[1], 3).to(latents.device, latents.dtype)
 
-        if timestep_quantile is not None:
-            dist = torch.distributions.normal.Normal(0, 1)
-            logits_norm = dist.icdf(torch.full((bs,), timestep_quantile, device=latents.device))
-        else:
-            logits_norm = torch.randn((bs,), device=latents.device)
+        timestep_sample_method = self.model_config.get('timestep_sample_method', 'logit_normal')
 
-        sigmoid_scale = self.model_config.get('sigmoid_scale', 1.0)
-        logits_norm = logits_norm * sigmoid_scale
-        t = torch.sigmoid(logits_norm)
+        if timestep_sample_method == 'logit_normal':
+            dist = torch.distributions.normal.Normal(0, 1)
+        elif timestep_sample_method == 'uniform':
+            dist = torch.distributions.uniform.Uniform(0, 1)
+        else:
+            raise NotImplementedError()
+
+        if timestep_quantile is not None:
+            t = dist.icdf(torch.full((bs,), timestep_quantile, device=latents.device))
+        else:
+            t = dist.sample((bs,)).to(latents.device)
+
+        if timestep_sample_method == 'logit_normal':
+            sigmoid_scale = self.model_config.get('sigmoid_scale', 1.0)
+            t = t * sigmoid_scale
+            t = torch.sigmoid(t)
+
         if shift := self.model_config.get('shift', None):
             t = (t * shift) / (1 + (shift - 1) * t)
         elif self.model_config.get('flux_shift', False):

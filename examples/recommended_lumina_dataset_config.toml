@@ -1,0 +1,16 @@
+# Lumina certainly works at low res (512), and is able to learn from it, but the quality at lower res
+# seems not as good as a model like Flux. So we will train 50/50 on low res and standard res.
+# I'm not sure what is best and urge the community to experiment and try things themselves.
+resolutions = [512, 1024]
+
+enable_ar_bucket = true
+min_ar = 0.5
+max_ar = 2.0
+num_ar_buckets = 9
+
+# It seems Lumina was trained with this caption prefix for most images. Probably good to fine tune with it.
+# But I am still unsure, and haven't done direct comparisons.
+caption_prefix = 'You are an assistant designed to generate high-quality images based on user prompts. <Prompt Start> '
+
+[[directory]]
+path = '/home/anon/data/something'

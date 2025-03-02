@@ -1,3 +1,6 @@
+import re
+from pathlib import Path
+
 import diffusers
 import torch
 from torch import nn
@@ -5,9 +8,272 @@ import torch.nn.functional as F
 from deepspeed.utils.logging import logger
 import peft
 import safetensors
+from safetensors.torch import save_file
 
 from models.base import BasePipeline, make_contiguous
-from utils.common import AUTOCAST_DTYPE
+from utils.common import AUTOCAST_DTYPE, is_main_process
+
+
+
+# Copied from https://github.com/huggingface/diffusers/blob/main/scripts/convert_diffusers_to_original_sdxl.py
+
+# =================#
+# UNet Conversion #
+# =================#
+
+unet_conversion_map = [
+    # (stable-diffusion, HF Diffusers)
+    ("time_embed.0.weight", "time_embedding.linear_1.weight"),
+    ("time_embed.0.bias", "time_embedding.linear_1.bias"),
+    ("time_embed.2.weight", "time_embedding.linear_2.weight"),
+    ("time_embed.2.bias", "time_embedding.linear_2.bias"),
+    ("input_blocks.0.0.weight", "conv_in.weight"),
+    ("input_blocks.0.0.bias", "conv_in.bias"),
+    ("out.0.weight", "conv_norm_out.weight"),
+    ("out.0.bias", "conv_norm_out.bias"),
+    ("out.2.weight", "conv_out.weight"),
+    ("out.2.bias", "conv_out.bias"),
+    # the following are for sdxl
+    ("label_emb.0.0.weight", "add_embedding.linear_1.weight"),
+    ("label_emb.0.0.bias", "add_embedding.linear_1.bias"),
+    ("label_emb.0.2.weight", "add_embedding.linear_2.weight"),
+    ("label_emb.0.2.bias", "add_embedding.linear_2.bias"),
+]
+
+unet_conversion_map_resnet = [
+    # (stable-diffusion, HF Diffusers)
+    ("in_layers.0", "norm1"),
+    ("in_layers.2", "conv1"),
+    ("out_layers.0", "norm2"),
+    ("out_layers.3", "conv2"),
+    ("emb_layers.1", "time_emb_proj"),
+    ("skip_connection", "conv_shortcut"),
+]
+
+unet_conversion_map_layer = []
+# hardcoded number of downblocks and resnets/attentions...
+# would need smarter logic for other networks.
+for i in range(3):
+    # loop over downblocks/upblocks
+
+    for j in range(2):
+        # loop over resnets/attentions for downblocks
+        hf_down_res_prefix = f"down_blocks.{i}.resnets.{j}."
+        sd_down_res_prefix = f"input_blocks.{3*i + j + 1}.0."
+        unet_conversion_map_layer.append((sd_down_res_prefix, hf_down_res_prefix))
+
+        if i > 0:
+            hf_down_atn_prefix = f"down_blocks.{i}.attentions.{j}."
+            sd_down_atn_prefix = f"input_blocks.{3*i + j + 1}.1."
+            unet_conversion_map_layer.append((sd_down_atn_prefix, hf_down_atn_prefix))
+
+    for j in range(4):
+        # loop over resnets/attentions for upblocks
+        hf_up_res_prefix = f"up_blocks.{i}.resnets.{j}."
+        sd_up_res_prefix = f"output_blocks.{3*i + j}.0."
+        unet_conversion_map_layer.append((sd_up_res_prefix, hf_up_res_prefix))
+
+        if i < 2:
+            # no attention layers in up_blocks.0
+            hf_up_atn_prefix = f"up_blocks.{i}.attentions.{j}."
+            sd_up_atn_prefix = f"output_blocks.{3 * i + j}.1."
+            unet_conversion_map_layer.append((sd_up_atn_prefix, hf_up_atn_prefix))
+
+    if i < 3:
+        # no downsample in down_blocks.3
+        hf_downsample_prefix = f"down_blocks.{i}.downsamplers.0.conv."
+        sd_downsample_prefix = f"input_blocks.{3*(i+1)}.0.op."
+        unet_conversion_map_layer.append((sd_downsample_prefix, hf_downsample_prefix))
+
+        # no upsample in up_blocks.3
+        hf_upsample_prefix = f"up_blocks.{i}.upsamplers.0."
+        sd_upsample_prefix = f"output_blocks.{3*i + 2}.{1 if i == 0 else 2}."
+        unet_conversion_map_layer.append((sd_upsample_prefix, hf_upsample_prefix))
+unet_conversion_map_layer.append(("output_blocks.2.2.conv.", "output_blocks.2.1.conv."))
+
+hf_mid_atn_prefix = "mid_block.attentions.0."
+sd_mid_atn_prefix = "middle_block.1."
+unet_conversion_map_layer.append((sd_mid_atn_prefix, hf_mid_atn_prefix))
+for j in range(2):
+    hf_mid_res_prefix = f"mid_block.resnets.{j}."
+    sd_mid_res_prefix = f"middle_block.{2*j}."
+    unet_conversion_map_layer.append((sd_mid_res_prefix, hf_mid_res_prefix))
+
+
+def convert_unet_state_dict(unet_state_dict):
+    # buyer beware: this is a *brittle* function,
+    # and correct output requires that all of these pieces interact in
+    # the exact order in which I have arranged them.
+    mapping = {k: k for k in unet_state_dict.keys()}
+    for sd_name, hf_name in unet_conversion_map:
+        mapping[hf_name] = sd_name
+    for k, v in mapping.items():
+        if "resnets" in k:
+            for sd_part, hf_part in unet_conversion_map_resnet:
+                v = v.replace(hf_part, sd_part)
+            mapping[k] = v
+    for k, v in mapping.items():
+        for sd_part, hf_part in unet_conversion_map_layer:
+            v = v.replace(hf_part, sd_part)
+        mapping[k] = v
+    new_state_dict = {sd_name: unet_state_dict[hf_name] for hf_name, sd_name in mapping.items()}
+    return new_state_dict
+
+
+# ================#
+# VAE Conversion #
+# ================#
+
+vae_conversion_map = [
+    # (stable-diffusion, HF Diffusers)
+    ("nin_shortcut", "conv_shortcut"),
+    ("norm_out", "conv_norm_out"),
+    ("mid.attn_1.", "mid_block.attentions.0."),
+]
+
+for i in range(4):
+    # down_blocks have two resnets
+    for j in range(2):
+        hf_down_prefix = f"encoder.down_blocks.{i}.resnets.{j}."
+        sd_down_prefix = f"encoder.down.{i}.block.{j}."
+        vae_conversion_map.append((sd_down_prefix, hf_down_prefix))
+
+    if i < 3:
+        hf_downsample_prefix = f"down_blocks.{i}.downsamplers.0."
+        sd_downsample_prefix = f"down.{i}.downsample."
+        vae_conversion_map.append((sd_downsample_prefix, hf_downsample_prefix))
+
+        hf_upsample_prefix = f"up_blocks.{i}.upsamplers.0."
+        sd_upsample_prefix = f"up.{3-i}.upsample."
+        vae_conversion_map.append((sd_upsample_prefix, hf_upsample_prefix))
+
+    # up_blocks have three resnets
+    # also, up blocks in hf are numbered in reverse from sd
+    for j in range(3):
+        hf_up_prefix = f"decoder.up_blocks.{i}.resnets.{j}."
+        sd_up_prefix = f"decoder.up.{3-i}.block.{j}."
+        vae_conversion_map.append((sd_up_prefix, hf_up_prefix))
+
+# this part accounts for mid blocks in both the encoder and the decoder
+for i in range(2):
+    hf_mid_res_prefix = f"mid_block.resnets.{i}."
+    sd_mid_res_prefix = f"mid.block_{i+1}."
+    vae_conversion_map.append((sd_mid_res_prefix, hf_mid_res_prefix))
+
+
+vae_conversion_map_attn = [
+    # (stable-diffusion, HF Diffusers)
+    ("norm.", "group_norm."),
+    # the following are for SDXL
+    ("q.", "to_q."),
+    ("k.", "to_k."),
+    ("v.", "to_v."),
+    ("proj_out.", "to_out.0."),
+]
+
+
+def reshape_weight_for_sd(w):
+    # convert HF linear weights to SD conv2d weights
+    if not w.ndim == 1:
+        return w.reshape(*w.shape, 1, 1)
+    else:
+        return w
+
+
+def convert_vae_state_dict(vae_state_dict):
+    mapping = {k: k for k in vae_state_dict.keys()}
+    for k, v in mapping.items():
+        for sd_part, hf_part in vae_conversion_map:
+            v = v.replace(hf_part, sd_part)
+        mapping[k] = v
+    for k, v in mapping.items():
+        if "attentions" in k:
+            for sd_part, hf_part in vae_conversion_map_attn:
+                v = v.replace(hf_part, sd_part)
+            mapping[k] = v
+    new_state_dict = {v: vae_state_dict[k] for k, v in mapping.items()}
+    weights_to_convert = ["q", "k", "v", "proj_out"]
+    for k, v in new_state_dict.items():
+        for weight_name in weights_to_convert:
+            if f"mid.attn_1.{weight_name}.weight" in k:
+                print(f"Reshaping {k} for SD format")
+                new_state_dict[k] = reshape_weight_for_sd(v)
+    return new_state_dict
+
+
+# =========================#
+# Text Encoder Conversion #
+# =========================#
+
+
+textenc_conversion_lst = [
+    # (stable-diffusion, HF Diffusers)
+    ("transformer.resblocks.", "text_model.encoder.layers."),
+    ("ln_1", "layer_norm1"),
+    ("ln_2", "layer_norm2"),
+    (".c_fc.", ".fc1."),
+    (".c_proj.", ".fc2."),
+    (".attn", ".self_attn"),
+    ("ln_final.", "text_model.final_layer_norm."),
+    ("token_embedding.weight", "text_model.embeddings.token_embedding.weight"),
+    ("positional_embedding", "text_model.embeddings.position_embedding.weight"),
+]
+protected = {re.escape(x[1]): x[0] for x in textenc_conversion_lst}
+textenc_pattern = re.compile("|".join(protected.keys()))
+
+# Ordering is from https://github.com/pytorch/pytorch/blob/master/test/cpp/api/modules.cpp
+code2idx = {"q": 0, "k": 1, "v": 2}
+
+
+def convert_openclip_text_enc_state_dict(text_enc_dict):
+    new_state_dict = {}
+    capture_qkv_weight = {}
+    capture_qkv_bias = {}
+    for k, v in text_enc_dict.items():
+        if (
+            k.endswith(".self_attn.q_proj.weight")
+            or k.endswith(".self_attn.k_proj.weight")
+            or k.endswith(".self_attn.v_proj.weight")
+        ):
+            k_pre = k[: -len(".q_proj.weight")]
+            k_code = k[-len("q_proj.weight")]
+            if k_pre not in capture_qkv_weight:
+                capture_qkv_weight[k_pre] = [None, None, None]
+            capture_qkv_weight[k_pre][code2idx[k_code]] = v
+            continue
+
+        if (
+            k.endswith(".self_attn.q_proj.bias")
+            or k.endswith(".self_attn.k_proj.bias")
+            or k.endswith(".self_attn.v_proj.bias")
+        ):
+            k_pre = k[: -len(".q_proj.bias")]
+            k_code = k[-len("q_proj.bias")]
+            if k_pre not in capture_qkv_bias:
+                capture_qkv_bias[k_pre] = [None, None, None]
+            capture_qkv_bias[k_pre][code2idx[k_code]] = v
+            continue
+
+        relabelled_key = textenc_pattern.sub(lambda m: protected[re.escape(m.group(0))], k)
+        new_state_dict[relabelled_key] = v
+
+    for k_pre, tensors in capture_qkv_weight.items():
+        if None in tensors:
+            raise Exception("CORRUPTED MODEL: one of the q-k-v values for the text encoder was missing")
+        relabelled_key = textenc_pattern.sub(lambda m: protected[re.escape(m.group(0))], k_pre)
+        new_state_dict[relabelled_key + ".in_proj_weight"] = torch.cat(tensors)
+
+    for k_pre, tensors in capture_qkv_bias.items():
+        if None in tensors:
+            raise Exception("CORRUPTED MODEL: one of the q-k-v values for the text encoder was missing")
+        relabelled_key = textenc_pattern.sub(lambda m: protected[re.escape(m.group(0))], k_pre)
+        new_state_dict[relabelled_key + ".in_proj_bias"] = torch.cat(tensors)
+
+    return new_state_dict
+
+
+def convert_openai_text_enc_state_dict(text_enc_dict):
+    return text_enc_dict
 
 
 # Copied from https://github.com/kohya-ss/sd-scripts/blob/main/library/custom_train_functions.py
@@ -78,6 +344,17 @@ def apply_snr_weight(loss, timesteps, noise_scheduler, gamma, v_prediction=False
     return loss
 
 
+def apply_debiased_estimation(loss, timesteps, noise_scheduler, v_prediction=False):
+    snr_t = torch.stack([noise_scheduler.all_snr[t] for t in timesteps])  # batch_size
+    snr_t = torch.minimum(snr_t, torch.ones_like(snr_t) * 1000)  # if timestep is 0, snr_t is inf, so limit it to 1000
+    if v_prediction:
+        weight = 1 / (snr_t + 1)
+    else:
+        weight = 1 / torch.sqrt(snr_t)
+    loss = loss * weight.to(loss.device)
+    return loss
+
+
 class SDXLPipeline(BasePipeline):
     # Unique name, used to make the cache_dir path.
     name = 'sdxl'
@@ -85,9 +362,9 @@ class SDXLPipeline(BasePipeline):
     # layers that will participate in activation checkpointing
     checkpointable_layers = [
         'InitialLayer',
-        'UnetDownBlockLayer',
-        'UnetMidBlockLayer',
-        'UnetUpBlockLayer',
+        'DownBlockInnerLayer',
+        'MidBlockInnerLayer',
+        'UpBlockInnerLayer',
         'FinalLayer',
     ]
 
@@ -96,11 +373,14 @@ class SDXLPipeline(BasePipeline):
         self.model_config = self.config['model']
         self.v_pred = self.model_config.get('v_pred', False)
         self.min_snr_gamma = self.model_config.get('min_snr_gamma', None)
+        self.debiased_estimation_loss = self.model_config.get('debiased_estimation_loss', None)
 
         if self.v_pred:
             logger.info('Using v-prediction loss')
         if self.min_snr_gamma is not None:
             logger.info(f'Using min_snr_gamma={self.min_snr_gamma}')
+        if self.debiased_estimation_loss:
+            logger.info('Using debiased_estimation_loss')
 
         self.diffusers_pipeline = diffusers.StableDiffusionXLPipeline.from_single_file(
             self.model_config['checkpoint_path'],
@@ -122,14 +402,19 @@ class SDXLPipeline(BasePipeline):
         self.unet.train()
         self.text_encoder.train()
         self.text_encoder_2.train()
-        # We'll need the original parameter name for saving, and the name changes once we wrap modules for pipeline parallelism,
-        # so store it in an attribute here. Same thing below if we're training a lora and creating lora weights.
-        for module in (self.unet, self.text_encoder, self.text_encoder_2):
-            for name, p in module.named_parameters():
-                p.original_name = name
+        self._set_param_original_name()
 
     def __getattr__(self, name):
         return getattr(self.diffusers_pipeline, name)
+
+    def _set_param_original_name(self):
+        for state_dict_key_prefix, module in (
+            ('unet.', self.unet),
+            ('text_encoder.', self.text_encoder),
+            ('text_encoder_2.', self.text_encoder_2),
+        ):
+            for name, p in module.named_parameters():
+                p.original_name = state_dict_key_prefix + name
 
     def get_vae(self):
         return self.vae
@@ -180,6 +465,57 @@ class SDXLPipeline(BasePipeline):
         else:
             raise NotImplementedError(f'Adapter type {adapter_type} is not implemented')
 
+    def load_adapter_weights(self, adapter_path):
+        print(f'Loading adapter weights from path {adapter_path}')
+        safetensors_files = list(Path(adapter_path).glob('*.safetensors'))
+        if len(safetensors_files) == 0:
+            raise RuntimeError(f'No safetensors file found in {adapter_path}')
+        if len(safetensors_files) > 1:
+            raise RuntimeError(f'Multiple safetensors files found in {adapter_path}')
+        adapter_state_dict = safetensors.torch.load_file(safetensors_files[0])
+        self.diffusers_pipeline.load_lora_weights(adapter_state_dict, adapter_name='default')
+        self._set_param_original_name()
+
+    def save_model(self, save_dir, diffusers_sd):
+        unet_state_dict, text_enc_dict, text_enc_2_dict = {}, {}, {}
+        for name, p in diffusers_sd.items():
+            if name.startswith('unet.'):
+                unet_state_dict[name[len('unet.'):]] = p
+            elif name.startswith('text_encoder.'):
+                text_enc_dict[name[len('text_encoder.'):]] = p
+            elif name.startswith('text_encoder_2.'):
+                text_enc_2_dict[name[len('text_encoder_2.'):]] = p
+            else:
+                raise RuntimeError(f'Unexpected parameter: {name}')
+
+        vae_state_dict = self.vae.state_dict()
+
+        # Convert the UNet model
+        unet_state_dict = convert_unet_state_dict(unet_state_dict)
+        unet_state_dict = {"model.diffusion_model." + k: v for k, v in unet_state_dict.items()}
+
+        # Convert the VAE model
+        vae_state_dict = convert_vae_state_dict(vae_state_dict)
+        vae_state_dict = {"first_stage_model." + k: v for k, v in vae_state_dict.items()}
+
+        # Convert text encoder 1
+        text_enc_dict = convert_openai_text_enc_state_dict(text_enc_dict)
+        text_enc_dict = {"conditioner.embedders.0.transformer." + k: v for k, v in text_enc_dict.items()}
+
+        # Convert text encoder 2
+        text_enc_2_dict = convert_openclip_text_enc_state_dict(text_enc_2_dict)
+        text_enc_2_dict = {"conditioner.embedders.1.model." + k: v for k, v in text_enc_2_dict.items()}
+        # We call the `.T.contiguous()` to match what's done in
+        # https://github.com/huggingface/diffusers/blob/84905ca7287876b925b6bf8e9bb92fec21c78764/src/diffusers/loaders/single_file_utils.py#L1085
+        text_enc_2_dict["conditioner.embedders.1.model.text_projection"] = text_enc_2_dict.pop(
+            "conditioner.embedders.1.model.text_projection.weight"
+        ).T.contiguous()
+
+        # Put together new checkpoint
+        state_dict = {**unet_state_dict, **vae_state_dict, **text_enc_dict, **text_enc_2_dict}
+
+        save_file(state_dict, save_dir / 'model.safetensors', metadata={"format": "pt"})
+
     def get_call_vae_fn(self, vae):
         def fn(tensor):
             latents = vae.encode(tensor.to(vae.device, vae.dtype)).latent_dist.sample()
@@ -227,40 +563,49 @@ class SDXLPipeline(BasePipeline):
         return noisy_latents, timesteps, input_ids, input_ids_2, add_time_ids, target
 
     def _get_input_ids(self, prompt, tokenizer):
-        text_inputs = tokenizer(
+        input_ids = tokenizer(
             prompt,
-            padding="max_length",
-            max_length=tokenizer.model_max_length,
-            truncation=True,
+            padding="longest",
+            truncation=False,
+            add_special_tokens=False,
             return_tensors="pt",
-        )
-
-        text_input_ids = text_inputs.input_ids
-        untruncated_ids = tokenizer(prompt, padding="longest", return_tensors="pt").input_ids
-
-        # TODO: can we support >77 tokens like various inference programs do?
-        if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-            text_input_ids, untruncated_ids
-        ):
-            removed_text = tokenizer.batch_decode(untruncated_ids[:, tokenizer.model_max_length - 1 : -1])
-            logger.warning(
-                "The following part of your input was truncated because CLIP can only handle sequences up to"
-                f" {tokenizer.model_max_length} tokens: {removed_text}"
-            )
-        return text_input_ids
+        ).input_ids
+        return input_ids
 
     def to_layers(self):
         layers = [InitialLayer(self.diffusers_pipeline)]
         unet = self.diffusers_pipeline.unet
         for block in unet.down_blocks:
-            layers.append(UnetDownBlockLayer(block))
+            layers.extend(UnetDownBlockLayer(block).to_layers())
         if unet.mid_block is not None:
-            layers.append(UnetMidBlockLayer(unet.mid_block))
+            layers.extend(UnetMidBlockLayer(unet.mid_block).to_layers())
         for i, block in enumerate(unet.up_blocks):
             is_final_block = i == len(unet.up_blocks) - 1
-            layers.append(UnetUpBlockLayer(block, is_final_block))
+            layers.extend(UnetUpBlockLayer(block, is_final_block).to_layers())
         layers.append(FinalLayer(unet, self))
         return layers
+
+    def get_param_groups(self, parameters):
+        unet_params, text_encoder_params, text_encoder_2_params = [], [], []
+        for p in parameters:
+            if p.original_name.startswith('unet.'):
+                unet_params.append(p)
+            elif p.original_name.startswith('text_encoder.'):
+                text_encoder_params.append(p)
+            elif p.original_name.startswith('text_encoder_2.'):
+                text_encoder_2_params.append(p)
+            else:
+                raise RuntimeError(f'Unexpected parameter: {p.original_name}')
+        base_lr = self.config['optimizer']['lr']
+        unet_lr = self.model_config.get('unet_lr', base_lr)
+        text_encoder_lr = self.model_config.get('text_encoder_1_lr', base_lr)
+        text_encoder_2_lr = self.model_config.get('text_encoder_2_lr', base_lr)
+        if is_main_process():
+            print(f'Using unet_lr={unet_lr}, text_encoder_1_lr={text_encoder_lr}, text_encoder_2_lr={text_encoder_2_lr}')
+        unet_param_group = {'params': unet_params, 'lr': unet_lr}
+        text_encoder_param_group = {'params': text_encoder_params, 'lr': text_encoder_lr}
+        text_encoder_2_param_group = {'params': text_encoder_2_params, 'lr': text_encoder_2_lr}
+        return [unet_param_group, text_encoder_param_group, text_encoder_2_param_group]
 
 
 class InitialLayer(nn.Module):
@@ -270,6 +615,8 @@ class InitialLayer(nn.Module):
         self.diffusers_pipeline = diffusers_pipeline
         self.text_encoder = self.diffusers_pipeline.text_encoder
         self.text_encoder_2 = self.diffusers_pipeline.text_encoder_2
+        self.tokenizer = self.diffusers_pipeline.tokenizer
+        self.tokenizer_2 = self.diffusers_pipeline.tokenizer_2
         # Unet modules we need to register on the nn.Module
         self.time_proj = self.unet.time_proj
         self.time_embedding = self.unet.time_embedding
@@ -304,22 +651,23 @@ class InitialLayer(nn.Module):
                 break
         forward_upsample_size = torch.tensor(forward_upsample_size).to(sample.device)
 
-        prompt_embeds_list = []
-        for text_input_ids, text_encoder in [(input_ids, self.text_encoder), (input_ids_2, self.text_encoder_2)]:
-            prompt_embeds = text_encoder(text_input_ids, output_hidden_states=True)
-            # We are only ALWAYS interested in the pooled output of the final text encoder
-            if prompt_embeds[0].ndim == 2:
-                pooled_prompt_embeds = prompt_embeds[0]
+        # prompt_embeds_list = []
+        # for text_input_ids, text_encoder in [(input_ids, self.text_encoder), (input_ids_2, self.text_encoder_2)]:
+        #     prompt_embeds = text_encoder(text_input_ids, output_hidden_states=True)
+        #     # We are only ALWAYS interested in the pooled output of the final text encoder
+        #     if prompt_embeds[0].ndim == 2:
+        #         pooled_prompt_embeds = prompt_embeds[0]
 
-            if self.clip_skip is None:
-                prompt_embeds = prompt_embeds.hidden_states[-2]
-            else:
-                # "2" because SDXL always indexes from the penultimate layer.
-                prompt_embeds = prompt_embeds.hidden_states[-(self.clip_skip + 2)]
-            prompt_embeds_list.append(prompt_embeds)
-        encoder_hidden_states = torch.concat(prompt_embeds_list, dim=-1)
+        #     if self.clip_skip is None:
+        #         prompt_embeds = prompt_embeds.hidden_states[-2]
+        #     else:
+        #         # "2" because SDXL always indexes from the penultimate layer.
+        #         prompt_embeds = prompt_embeds.hidden_states[-(self.clip_skip + 2)]
+        #     prompt_embeds_list.append(prompt_embeds)
+        # encoder_hidden_states = torch.concat(prompt_embeds_list, dim=-1)
+        encoder_hidden_states, pooled_prompt_embeds = self.get_text_conditioning(input_ids, input_ids_2)
 
-        add_time_ids = add_time_ids.to(prompt_embeds.dtype)
+        add_time_ids = add_time_ids.to(pooled_prompt_embeds.dtype)
         add_text_embeds = pooled_prompt_embeds
         added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
         # TODO: need timestep cond? Might be optional / inference only.
@@ -344,6 +692,136 @@ class InitialLayer(nn.Module):
 
         return make_contiguous(sample, timestep, emb, encoder_hidden_states, *down_block_res_samples, forward_upsample_size, target)
 
+    def get_text_conditioning(self, input_ids, input_ids_2):
+        prompt_embeds = self.get_prompt_embeds(input_ids, self.tokenizer, self.text_encoder)
+        prompt_embeds_2, pooled_prompt_embeds = self.get_prompt_embeds(input_ids_2, self.tokenizer_2, self.text_encoder_2, return_pooled_prompt_embeds=True)
+        encoder_hidden_states = torch.concat([prompt_embeds, prompt_embeds_2], dim=-1)
+        return encoder_hidden_states, pooled_prompt_embeds
+
+    # Supports arbitrary length input_ids by splitting into chunks of at most model_max_length.
+    def get_prompt_embeds(self, input_ids, tokenizer, text_encoder, return_pooled_prompt_embeds=False):
+        bos = tokenizer.bos_token_id
+        eos = tokenizer.eos_token_id
+        pad = tokenizer.pad_token_id
+        bs = input_ids.shape[0]
+        device = input_ids.device
+        chunks = torch.split(input_ids, tokenizer.model_max_length-2, dim=-1)
+        processed_chunks = []
+        # Add BOS and pad token, then replace the first pad token in each example with EOS.
+        for chunk in chunks:
+            chunk = torch.cat(
+                [
+                    torch.full((bs, 1), bos, device=device),
+                    chunk,
+                    torch.full((bs, 1), pad, device=device)
+                ],
+                dim=-1
+            )
+            first_pad_idx = torch.argmax((chunk == pad).to(torch.int32), dim=-1)
+            chunk[torch.arange(chunk.shape[0]), first_pad_idx] = eos
+            processed_chunks.append(chunk)
+
+        embed_chunks = []
+        for i, input_ids in enumerate(processed_chunks):
+            prompt_embeds = text_encoder(input_ids, output_hidden_states=True)
+            if i == 0 and return_pooled_prompt_embeds:
+                pooled_prompt_embeds = prompt_embeds[0]
+
+            if self.clip_skip is None:
+                prompt_embeds = prompt_embeds.hidden_states[-2]
+            else:
+                # "2" because SDXL always indexes from the penultimate layer.
+                prompt_embeds = prompt_embeds.hidden_states[-(self.clip_skip + 2)]
+
+            embed_chunks.append(prompt_embeds)
+
+        prompt_embeds = torch.cat(embed_chunks, dim=1)
+        if return_pooled_prompt_embeds:
+            return prompt_embeds, pooled_prompt_embeds
+        return prompt_embeds
+
+
+class DownBlockInnerLayer(nn.Module):
+    def __init__(self, resnet, attn, append_residual_hidden_states=True):
+        super().__init__()
+        self.resnet = resnet
+        self.attn = attn
+        self.append_residual_hidden_states = append_residual_hidden_states
+
+    @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
+    def forward(self, inputs):
+        hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size, target = inputs
+        hidden_states = self.resnet(hidden_states, emb)
+        if self.attn is not None:
+            hidden_states = self.attn(hidden_states, encoder_hidden_states=encoder_hidden_states, return_dict=False)[0]
+        res_hidden_states += (hidden_states,)
+        return make_contiguous(hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size, target)
+
+
+class MidBlockInnerLayer(nn.Module):
+    def __init__(self, resnet, attn):
+        super().__init__()
+        self.resnet = resnet
+        self.attn = attn
+
+    @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
+    def forward(self, inputs):
+        hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size, target = inputs
+        hidden_states = self.resnet(hidden_states, emb)
+        if self.attn is not None:
+            hidden_states = self.attn(hidden_states, encoder_hidden_states=encoder_hidden_states, return_dict=False)[0]
+        return make_contiguous(hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size, target)
+
+
+class UpBlockInnerLayer(nn.Module):
+    def __init__(self, resnet, attn):
+        super().__init__()
+        self.resnet = resnet
+        self.attn = attn
+
+    @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
+    def forward(self, inputs):
+        hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size, target = inputs
+        res_tmp = res_hidden_states[-1]
+        res_hidden_states = res_hidden_states[:-1]
+        hidden_states = torch.cat([hidden_states, res_tmp], dim=1)
+        hidden_states = self.resnet(hidden_states, emb)
+        if self.attn is not None:
+            hidden_states = self.attn(hidden_states, encoder_hidden_states=encoder_hidden_states, return_dict=False)[0]
+        return make_contiguous(hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size, target)
+
+
+class DownsamplerLayer(nn.Module):
+    def __init__(self, downsamplers):
+        super().__init__()
+        self.downsamplers = downsamplers
+
+    @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
+    def forward(self, inputs):
+        hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size, target = inputs
+        for downsampler in self.downsamplers:
+            hidden_states = downsampler(hidden_states)
+        res_hidden_states += (hidden_states,)
+        return make_contiguous(hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size, target)
+
+
+class UpsamplerLayer(nn.Module):
+    def __init__(self, upsamplers, is_final_block):
+        super().__init__()
+        self.upsamplers = upsamplers
+        self.is_final_block = is_final_block
+
+    @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
+    def forward(self, inputs):
+        hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size, target = inputs
+        if not self.is_final_block and forward_upsample_size:
+            upsample_size = res_hidden_states[-1].shape[2:]
+        else:
+            upsample_size = None
+        for upsampler in self.upsamplers:
+            hidden_states = upsampler(hidden_states, upsample_size)
+        return make_contiguous(hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size, target)
+
 
 class UnetDownBlockLayer(nn.Module):
     def __init__(self, block):
@@ -366,6 +844,16 @@ class UnetDownBlockLayer(nn.Module):
         down_block_res_samples += res_samples
         return make_contiguous(sample, timesteps, emb, encoder_hidden_states, *down_block_res_samples, forward_upsample_size, target)
 
+    def to_layers(self):
+        layers = []
+        resnets = self.block.resnets
+        attentions = getattr(self.block, 'attentions', [None] * len(resnets))
+        for resnet, attention in zip(resnets, attentions):
+            layers.append(DownBlockInnerLayer(resnet, attention))
+        if self.block.downsamplers is not None:
+            layers.append(DownsamplerLayer(self.block.downsamplers))
+        return layers
+
 
 class UnetMidBlockLayer(nn.Module):
     def __init__(self, block):
@@ -386,6 +874,15 @@ class UnetMidBlockLayer(nn.Module):
             sample = self.mid_block(sample, emb)
 
         return make_contiguous(sample, timesteps, emb, encoder_hidden_states, *down_block_res_samples, forward_upsample_size, target)
+
+    def to_layers(self):
+        layers = []
+        resnets = self.block.resnets
+        attentions = self.block.attentions
+        layers.append(MidBlockInnerLayer(resnets[0], None))
+        for attn, resnet in zip(attentions, resnets[1:]):
+            layers.append(MidBlockInnerLayer(resnet, attn))
+        return layers
 
 
 class UnetUpBlockLayer(nn.Module):
@@ -426,6 +923,16 @@ class UnetUpBlockLayer(nn.Module):
 
         return make_contiguous(sample, timesteps, emb, encoder_hidden_states, *down_block_res_samples, forward_upsample_size, target)
 
+    def to_layers(self):
+        layers = []
+        resnets = self.block.resnets
+        attentions = getattr(self.block, 'attentions', [None] * len(resnets))
+        for resnet, attention in zip(resnets, attentions):
+            layers.append(UpBlockInnerLayer(resnet, attention))
+        if self.block.upsamplers is not None:
+            layers.append(UpsamplerLayer(self.block.upsamplers, self.is_final_block))
+        return layers
+
 
 class FinalLayer(nn.Module):
     def __init__(self, unet, pipeline):
@@ -451,5 +958,7 @@ class FinalLayer(nn.Module):
 
         if self.pipeline.min_snr_gamma is not None:
             loss = apply_snr_weight(loss, timesteps, self.pipeline.scheduler, self.pipeline.min_snr_gamma, self.pipeline.v_pred)
+        if self.pipeline.debiased_estimation_loss is not None:
+            loss = apply_debiased_estimation(loss, timesteps, self.pipeline.scheduler, self.pipeline.v_pred)
 
         return loss.mean()

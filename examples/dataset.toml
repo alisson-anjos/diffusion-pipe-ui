@@ -1,7 +1,14 @@
 # Resolutions to train on, given as the side length of a square image. You can have multiple sizes here.
+# !!!WARNING!!!: this might work differently to how you think it does. Images are first grouped to aspect ratio
+# buckets, then each image is resized to ALL of the areas specified by the resolutions list. This is a way to do
+# multi-resolution training, i.e. training on multiple total pixel areas at once. Your dataset is effectively duplicated
+# as many times as the length of this list.
+# If you just want to use predetermined (width, height, frames) size buckets, see the example cosmos_dataset.toml
+# file for how you can do that.
 resolutions = [512]
+
 # You can give resolutions as (width, height) pairs also. This doesn't do anything different, it's just
-# another way of specifying the area (i.e. total number of pixels) you want to train on.
+# another way of specifying the area(s) (i.e. total number of pixels) you want to train on.
 # resolutions = [[1280, 720]]
 
 # Enable aspect ratio bucketing. For the different AR buckets, the final size will be such that
@@ -34,7 +41,8 @@ frame_buckets = [1, 33]
 # Path to directory of images/videos, and corresponding caption files. The caption files should match the media file name, but with a .txt extension.
 # A missing caption file will log a warning, but then just train using an empty caption.
 path = '/home/anon/data/images/grayscale'
-# The dataset will act like it is duplicated this many times.
+# How many repeats for 1 epoch. The dataset will act like it is duplicated this many times.
+# The semantics of this are the same as sd-scripts: num_repeats=1 means one epoch is a single pass over all examples (no duplication).
 num_repeats = 10
 # Example of overriding some settings, and using ar_buckets to directly specify ARs.
 # ar_buckets = [[448, 576]]

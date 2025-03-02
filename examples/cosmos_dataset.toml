@@ -1,0 +1,15 @@
+# Cosmos will only work properly with a fixed set of resolutions and frame lengths. Rather than setting up flexible aspect ratio buckets
+# and target resolutions, for this model you must directly specify the desired final size_buckets. This is for image training. For video
+# training, it seems you must use the full 121 frame length at these resolutions, which I can't even test because it would take too much
+# VRAM.
+size_buckets = [
+    [960, 960, 1],
+    [960, 704, 1],
+    [704, 960, 1],
+    [1280, 704, 1],
+    [704, 1280, 1],
+]
+
+[[directory]]
+path = '/home/anon/data/images/grayscale'
+num_repeats = 10
