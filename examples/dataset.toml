@@ -41,9 +41,19 @@ frame_buckets = [1, 33]
 # Path to directory of images/videos, and corresponding caption files. The caption files should match the media file name, but with a .txt extension.
 # A missing caption file will log a warning, but then just train using an empty caption.
 path = '/home/anon/data/images/grayscale'
+
+# You can do masked training, where the mask indicates which parts of the image to train on. The masking is done in the loss function. The mask directory should have mask
+# images with the same names (ignoring the extension) as the training images. E.g. training image 1.jpg could have mask image 1.jpg, 1.png, etc. If a training image doesn't
+# have a corresponding mask, a warning is printed but training proceeds with no mask for that image. In the mask, white means train on this, black means mask it out. Values
+# in between black and white become a weight between 0 and 1, i.e. you can use a suitable value of grey for mask weight of 0.5. In actuality, only the R channel is extracted
+# and converted to the mask weight.
+# The mask_path can point to any directory containing mask images.
+#mask_path = '/home/anon/data/images/grayscale/masks'
+
 # How many repeats for 1 epoch. The dataset will act like it is duplicated this many times.
 # The semantics of this are the same as sd-scripts: num_repeats=1 means one epoch is a single pass over all examples (no duplication).
 num_repeats = 10
+
 # Example of overriding some settings, and using ar_buckets to directly specify ARs.
 # ar_buckets = [[448, 576]]
 # resolutions = [[448, 576]]

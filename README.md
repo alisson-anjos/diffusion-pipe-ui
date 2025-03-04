@@ -171,9 +171,9 @@ Tip: If you train often, I advise you to create a Network Volume in the runpod a
 
 # Original README (diffusion-pipe)
 
-Currently supports SDXL, Flux, LTX-Video, HunyuanVideo (t2v), Cosmos, Lumina Image 2.0, Wan2.1 (t2v)
+Currently supports SDXL, Flux, LTX-Video, HunyuanVideo (t2v), Cosmos, Lumina Image 2.0, Wan2.1 (t2v and i2v)
 
-**Work in progress and highly experimental.** It is unstable and not well tested. Things might not work right.
+**Work in progress.** This is a side project for me and my time is limited. I will try to add new models and features when I can.
 
 ## Features
 - Pipeline parallelism, for training models larger than can fit on a single GPU
@@ -181,9 +181,13 @@ Currently supports SDXL, Flux, LTX-Video, HunyuanVideo (t2v), Cosmos, Lumina Ima
 - Compute metrics on a held-out eval set, for measuring generalization
 - Training state checkpointing and resuming from checkpoint
 - Efficient multi-process, multi-GPU pre-caching of latents and text embeddings
-- Easily add support for new models by implementing a single subclass
+- Seemlessly supports both image and video models in a unified way
+- Easily add new models by implementing a single subclass
 
 ## Recent changes
+- 2025-03-03
+  - Added masked training support. See the comment in the example dataset config for explanation. This feature required some refactoring, I tested that each supported model is able to train, but if something suddenly breaks for you this change is the likely cause. Like most brand-new features, masked training is experimental.
+  - Added Wan i2v training. It seems to work but is barely tested. See the supported models doc for details.
 - 2025-02-25
   - Support LoRA training on Wan2.1 t2v variants.
   - SDXL: debiased estimation loss, init from existing lora, and arbitrary caption length.
@@ -200,9 +204,6 @@ Currently supports SDXL, Flux, LTX-Video, HunyuanVideo (t2v), Cosmos, Lumina Ima
 - 2025-01-20
   - Properly support training Flex.1-alpha.
   - Make sure to set ```bypass_guidance_embedding=true``` in the model config. You can look at the example config file.
-- 2025-01-17
-  - For HunyuanVideo VAE when loaded via the ```vae_path``` option, fixed incorrect tiling sample size. The training loss is now moderately lower overall. Quality of trained LoRAs should be improved, but the improvement is likely minor.
-  - You should update any cached latents made before this change. Delete the cache directory inside the dataset directories, or run the training script with the ```--regenerate_cache``` command line option.
 
 ## Windows support
 It will be difficult or impossible to make training work on native Windows. This is because Deepspeed only has [partial Windows support](https://github.com/microsoft/DeepSpeed/blob/master/blogs/windows/08-2024/README.md). Deepspeed is a hard requirement because the entire training script is built around Deepspeed pipeline parallelism. However, it will work on Windows Subsystem for Linux, specifically WSL 2. If you must use Windows I recommend trying WSL 2.

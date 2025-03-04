@@ -528,11 +528,17 @@ class SDXLPipeline(BasePipeline):
     def prepare_inputs(self, inputs, timestep_quantile=None):
         latents = inputs['latents'].float()
         caption = inputs['caption']
+        mask = inputs['mask']
         input_ids = self._get_input_ids(caption, self.tokenizer)
         input_ids_2 = self._get_input_ids(caption, self.tokenizer_2)
 
-        bs = latents.shape[0]
+        bs, channels, h, w = latents.shape
         device = latents.device
+
+        if mask is not None:
+            mask = mask.unsqueeze(1)  # make mask (bs, 1, img_h, img_w)
+            mask = F.interpolate(mask, size=(h, w), mode='nearest-exact')  # resize to latent spatial dimension
+
         noise = torch.randn_like(latents, device=device)
         min_timestep = 0
         max_timestep = self.scheduler.config.num_train_timesteps
@@ -560,7 +566,7 @@ class SDXLPipeline(BasePipeline):
             text_encoder_projection_dim=self.text_encoder_2.config.projection_dim,
         ).expand(bs, -1)
 
-        return noisy_latents, timesteps, input_ids, input_ids_2, add_time_ids, target
+        return (noisy_latents, timesteps, input_ids, input_ids_2, add_time_ids), (target, mask)
 
     def _get_input_ids(self, prompt, tokenizer):
         input_ids = tokenizer(
@@ -607,6 +613,27 @@ class SDXLPipeline(BasePipeline):
         text_encoder_2_param_group = {'params': text_encoder_2_params, 'lr': text_encoder_2_lr}
         return [unet_param_group, text_encoder_param_group, text_encoder_2_param_group]
 
+    def get_loss_fn(self):
+        def loss_fn(output, label):
+            output, timesteps = output
+            target, mask = label
+            with torch.autocast('cuda', enabled=False):
+                output = output.to(torch.float32)
+                target = target.to(output.device, torch.float32)
+                loss = F.mse_loss(output, target, reduction='none')
+                # empty tensor means no masking
+                if mask.numel() > 0:
+                    mask = mask.to(output.device, torch.float32)
+                    loss *= mask
+                loss = loss.mean([1, 2, 3])
+                if self.min_snr_gamma is not None:
+                    loss = apply_snr_weight(loss, timesteps, self.scheduler, self.min_snr_gamma, self.v_pred)
+                if self.debiased_estimation_loss is not None:
+                    loss = apply_debiased_estimation(loss, timesteps, self.scheduler, self.v_pred)
+                loss = loss.mean()
+            return loss
+        return loss_fn
+
 
 class InitialLayer(nn.Module):
     def __init__(self, diffusers_pipeline):
@@ -634,7 +661,7 @@ class InitialLayer(nn.Module):
         for tensor in inputs:
             if torch.is_floating_point(tensor):
                 tensor.requires_grad_(True)
-        sample, timestep, input_ids, input_ids_2, add_time_ids, target = inputs
+        sample, timestep, input_ids, input_ids_2, add_time_ids = inputs
 
         # By default samples have to be AT least a multiple of the overall upsampling factor.
         # The overall upsampling factor is equal to 2 ** (# num of upsampling layers).
@@ -690,7 +717,7 @@ class InitialLayer(nn.Module):
         sample = self.conv_in(sample)
         down_block_res_samples = (sample,)
 
-        return make_contiguous(sample, timestep, emb, encoder_hidden_states, *down_block_res_samples, forward_upsample_size, target)
+        return make_contiguous(sample, timestep, emb, encoder_hidden_states, *down_block_res_samples, forward_upsample_size)
 
     def get_text_conditioning(self, input_ids, input_ids_2):
         prompt_embeds = self.get_prompt_embeds(input_ids, self.tokenizer, self.text_encoder)
@@ -750,12 +777,12 @@ class DownBlockInnerLayer(nn.Module):
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
-        hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size, target = inputs
+        hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size = inputs
         hidden_states = self.resnet(hidden_states, emb)
         if self.attn is not None:
             hidden_states = self.attn(hidden_states, encoder_hidden_states=encoder_hidden_states, return_dict=False)[0]
         res_hidden_states += (hidden_states,)
-        return make_contiguous(hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size, target)
+        return make_contiguous(hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size)
 
 
 class MidBlockInnerLayer(nn.Module):
@@ -766,11 +793,11 @@ class MidBlockInnerLayer(nn.Module):
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
-        hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size, target = inputs
+        hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size = inputs
         hidden_states = self.resnet(hidden_states, emb)
         if self.attn is not None:
             hidden_states = self.attn(hidden_states, encoder_hidden_states=encoder_hidden_states, return_dict=False)[0]
-        return make_contiguous(hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size, target)
+        return make_contiguous(hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size)
 
 
 class UpBlockInnerLayer(nn.Module):
@@ -781,14 +808,14 @@ class UpBlockInnerLayer(nn.Module):
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
-        hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size, target = inputs
+        hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size = inputs
         res_tmp = res_hidden_states[-1]
         res_hidden_states = res_hidden_states[:-1]
         hidden_states = torch.cat([hidden_states, res_tmp], dim=1)
         hidden_states = self.resnet(hidden_states, emb)
         if self.attn is not None:
             hidden_states = self.attn(hidden_states, encoder_hidden_states=encoder_hidden_states, return_dict=False)[0]
-        return make_contiguous(hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size, target)
+        return make_contiguous(hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size)
 
 
 class DownsamplerLayer(nn.Module):
@@ -798,11 +825,11 @@ class DownsamplerLayer(nn.Module):
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
-        hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size, target = inputs
+        hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size = inputs
         for downsampler in self.downsamplers:
             hidden_states = downsampler(hidden_states)
         res_hidden_states += (hidden_states,)
-        return make_contiguous(hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size, target)
+        return make_contiguous(hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size)
 
 
 class UpsamplerLayer(nn.Module):
@@ -813,14 +840,14 @@ class UpsamplerLayer(nn.Module):
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
-        hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size, target = inputs
+        hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size = inputs
         if not self.is_final_block and forward_upsample_size:
             upsample_size = res_hidden_states[-1].shape[2:]
         else:
             upsample_size = None
         for upsampler in self.upsamplers:
             hidden_states = upsampler(hidden_states, upsample_size)
-        return make_contiguous(hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size, target)
+        return make_contiguous(hidden_states, timesteps, emb, encoder_hidden_states, *res_hidden_states, forward_upsample_size)
 
 
 class UnetDownBlockLayer(nn.Module):
@@ -830,7 +857,7 @@ class UnetDownBlockLayer(nn.Module):
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
-        sample, timesteps, emb, encoder_hidden_states, *down_block_res_samples, forward_upsample_size, target = inputs
+        sample, timesteps, emb, encoder_hidden_states, *down_block_res_samples, forward_upsample_size = inputs
 
         if hasattr(self.block, "has_cross_attention") and self.block.has_cross_attention:
             sample, res_samples = self.block(
@@ -842,7 +869,7 @@ class UnetDownBlockLayer(nn.Module):
             sample, res_samples = self.block(hidden_states=sample, temb=emb)
 
         down_block_res_samples += res_samples
-        return make_contiguous(sample, timesteps, emb, encoder_hidden_states, *down_block_res_samples, forward_upsample_size, target)
+        return make_contiguous(sample, timesteps, emb, encoder_hidden_states, *down_block_res_samples, forward_upsample_size)
 
     def to_layers(self):
         layers = []
@@ -862,7 +889,7 @@ class UnetMidBlockLayer(nn.Module):
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
-        sample, timesteps, emb, encoder_hidden_states, *down_block_res_samples, forward_upsample_size, target = inputs
+        sample, timesteps, emb, encoder_hidden_states, *down_block_res_samples, forward_upsample_size = inputs
 
         if hasattr(self.block, "has_cross_attention") and self.block.has_cross_attention:
             sample = self.block(
@@ -873,7 +900,7 @@ class UnetMidBlockLayer(nn.Module):
         else:
             sample = self.mid_block(sample, emb)
 
-        return make_contiguous(sample, timesteps, emb, encoder_hidden_states, *down_block_res_samples, forward_upsample_size, target)
+        return make_contiguous(sample, timesteps, emb, encoder_hidden_states, *down_block_res_samples, forward_upsample_size)
 
     def to_layers(self):
         layers = []
@@ -893,7 +920,7 @@ class UnetUpBlockLayer(nn.Module):
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
-        sample, timesteps, emb, encoder_hidden_states, *down_block_res_samples, forward_upsample_size, target = inputs
+        sample, timesteps, emb, encoder_hidden_states, *down_block_res_samples, forward_upsample_size = inputs
 
         res_samples = down_block_res_samples[-len(self.block.resnets) :]
         down_block_res_samples = down_block_res_samples[: -len(self.block.resnets)]
@@ -921,7 +948,7 @@ class UnetUpBlockLayer(nn.Module):
                 upsample_size=upsample_size,
             )
 
-        return make_contiguous(sample, timesteps, emb, encoder_hidden_states, *down_block_res_samples, forward_upsample_size, target)
+        return make_contiguous(sample, timesteps, emb, encoder_hidden_states, *down_block_res_samples, forward_upsample_size)
 
     def to_layers(self):
         layers = []
@@ -944,21 +971,9 @@ class FinalLayer(nn.Module):
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
-        sample, timesteps, emb, encoder_hidden_states, *down_block_res_samples, forward_upsample_size, target = inputs
+        sample, timesteps, emb, encoder_hidden_states, *down_block_res_samples, forward_upsample_size = inputs
 
         if self.conv_norm_out:
             sample = self.conv_norm_out(sample)
             sample = self.conv_act(sample)
-        sample = self.conv_out(sample)
-
-        sample = sample.to(torch.float32)
-        target = target.to(torch.float32)
-        loss = F.mse_loss(sample, target, reduction='none')
-        loss = loss.mean([1, 2, 3])
-
-        if self.pipeline.min_snr_gamma is not None:
-            loss = apply_snr_weight(loss, timesteps, self.pipeline.scheduler, self.pipeline.min_snr_gamma, self.pipeline.v_pred)
-        if self.pipeline.debiased_estimation_loss is not None:
-            loss = apply_debiased_estimation(loss, timesteps, self.pipeline.scheduler, self.pipeline.v_pred)
-
-        return loss.mean()
+        return self.conv_out(sample), timesteps

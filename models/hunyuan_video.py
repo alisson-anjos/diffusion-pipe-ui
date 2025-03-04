@@ -413,8 +413,14 @@ class HunyuanVideoPipeline(BasePipeline):
         prompt_embeds_1 = inputs['prompt_embeds_1']
         prompt_attention_mask_1 = inputs['prompt_attention_mask_1']
         prompt_embeds_2 = inputs['prompt_embeds_2']
+        mask = inputs['mask']
 
         bs, channels, num_frames, h, w = latents.shape
+
+        if mask is not None:
+            mask = mask.unsqueeze(1)  # make mask (bs, 1, img_h, img_w)
+            mask = F.interpolate(mask, size=(h, w), mode='nearest-exact')  # resize to latent spatial dimension
+            mask = mask.unsqueeze(2)  # make mask same number of dims as target
 
         guidance_expand = torch.tensor(
             [self.model_config.get('guidance', 1.0)] * bs,
@@ -470,8 +476,7 @@ class HunyuanVideoPipeline(BasePipeline):
             freqs_cos,
             freqs_sin,
             guidance_expand,
-            target,
-        )
+        ), (target, mask)
 
     def to_layers(self):
         transformer = self.transformer
@@ -505,7 +510,7 @@ class InitialLayer(nn.Module):
             if torch.is_floating_point(item):
                 item.requires_grad_(True)
 
-        x, t, text_states, text_mask, text_states_2, freqs_cos, freqs_sin, guidance, target = inputs
+        x, t, text_states, text_mask, text_states_2, freqs_cos, freqs_sin, guidance = inputs
 
         _, _, ot, oh, ow = x.shape
         tt, th, tw = (
@@ -560,7 +565,7 @@ class InitialLayer(nn.Module):
         img_seq_len = torch.tensor(img_seq_len, device=img.device)
         max_seqlen = img_seq_len + txt_seq_len
 
-        return make_contiguous(img, txt, vec, cu_seqlens, max_seqlen, freqs_cos, freqs_sin, txt_seq_len, img_seq_len, unpatchify_args, target)
+        return make_contiguous(img, txt, vec, cu_seqlens, max_seqlen, freqs_cos, freqs_sin, txt_seq_len, img_seq_len, unpatchify_args)
 
 
 class DoubleBlock(nn.Module):
@@ -570,15 +575,15 @@ class DoubleBlock(nn.Module):
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
-        img, txt, vec, cu_seqlens, max_seqlen, freqs_cos, freqs_sin, txt_seq_len, img_seq_len, unpatchify_args, target = inputs
+        img, txt, vec, cu_seqlens, max_seqlen, freqs_cos, freqs_sin, txt_seq_len, img_seq_len, unpatchify_args = inputs
         img, txt = self.block(img, txt, vec, cu_seqlens, cu_seqlens, max_seqlen.item(), max_seqlen.item(), (freqs_cos, freqs_sin))
-        return make_contiguous(img, txt, vec, cu_seqlens, max_seqlen, freqs_cos, freqs_sin, txt_seq_len, img_seq_len, unpatchify_args, target)
+        return make_contiguous(img, txt, vec, cu_seqlens, max_seqlen, freqs_cos, freqs_sin, txt_seq_len, img_seq_len, unpatchify_args)
 
 
 def concatenate_hidden_states(inputs):
-    img, txt, vec, cu_seqlens, max_seqlen, freqs_cos, freqs_sin, txt_seq_len, img_seq_len, unpatchify_args, target = inputs
+    img, txt, vec, cu_seqlens, max_seqlen, freqs_cos, freqs_sin, txt_seq_len, img_seq_len, unpatchify_args = inputs
     x = torch.cat((img, txt), 1)
-    return x, vec, cu_seqlens, max_seqlen, freqs_cos, freqs_sin, txt_seq_len, img_seq_len, unpatchify_args, target
+    return x, vec, cu_seqlens, max_seqlen, freqs_cos, freqs_sin, txt_seq_len, img_seq_len, unpatchify_args
 
 
 class SingleBlock(nn.Module):
@@ -588,9 +593,9 @@ class SingleBlock(nn.Module):
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
-        x, vec, cu_seqlens, max_seqlen, freqs_cos, freqs_sin, txt_seq_len, img_seq_len, unpatchify_args, target = inputs
+        x, vec, cu_seqlens, max_seqlen, freqs_cos, freqs_sin, txt_seq_len, img_seq_len, unpatchify_args = inputs
         x = self.block(x, vec, txt_seq_len.item(), cu_seqlens, cu_seqlens, max_seqlen.item(), max_seqlen.item(), (freqs_cos, freqs_sin))
-        return make_contiguous(x, vec, cu_seqlens, max_seqlen, freqs_cos, freqs_sin, txt_seq_len, img_seq_len, unpatchify_args, target)
+        return make_contiguous(x, vec, cu_seqlens, max_seqlen, freqs_cos, freqs_sin, txt_seq_len, img_seq_len, unpatchify_args)
 
 class OutputLayer(nn.Module):
     def __init__(self, transformer):
@@ -602,17 +607,11 @@ class OutputLayer(nn.Module):
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
-        x, vec, cu_seqlens, max_seqlen, freqs_cos, freqs_sin, txt_seq_len, img_seq_len, unpatchify_args, target = inputs
+        x, vec, cu_seqlens, max_seqlen, freqs_cos, freqs_sin, txt_seq_len, img_seq_len, unpatchify_args = inputs
         img = x[:, :img_seq_len.item(), ...]
 
         # ---------------------------- Final layer ------------------------------
         img = self.final_layer(img, vec)  # (N, T, patch_size ** 2 * out_channels)
 
         tt, th, tw = (arg.item() for arg in unpatchify_args)
-        output = self.transformer[0].unpatchify(img, tt, th, tw)
-
-        with torch.autocast('cuda', enabled=False):
-            output = output.to(torch.float32)
-            target = target.to(torch.float32)
-            loss = F.mse_loss(output, target)
-        return loss
+        return self.transformer[0].unpatchify(img, tt, th, tw)

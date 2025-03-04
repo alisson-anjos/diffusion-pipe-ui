@@ -11,11 +11,11 @@ from accelerate import init_empty_weights
 
 from models.base import BasePipeline, PreprocessMediaFile, make_contiguous
 from utils.common import AUTOCAST_DTYPE
-#from wan.modules.t5 import T5EncoderModel
 from wan.modules.t5 import T5Encoder, T5Decoder, T5Model
 from wan.modules.tokenizers import HuggingfaceTokenizer
 from wan.modules.vae import WanVAE
 from wan.modules.model import WanModel, sinusoidal_embedding_1d
+from wan.modules.clip import CLIPModel
 from wan import configs as wan_configs
 
 
@@ -126,6 +126,14 @@ class T5EncoderModel:
         return [u[:v] for u, v in zip(context, seq_lens)]
 
 
+# Wrapper to hold both VAE and CLIP, so we can move both to/from GPU together.
+class VaeAndClip(nn.Module):
+    def __init__(self, vae, clip):
+        super().__init__()
+        self.vae = vae
+        self.clip = clip
+
+
 class WanPipeline(BasePipeline):
     name = 'wan'
     framerate = 16
@@ -140,15 +148,16 @@ class WanPipeline(BasePipeline):
 
         with open(os.path.join(ckpt_dir, 'config.json')) as f:
             json_config = json.load(f)
-        if json_config['model_type'] != 't2v':
-            raise NotImplementedError('Only t2v variants of Wan are supported')
+        self.i2v = (json_config['model_type'] == 'i2v')
         model_dim = json_config['dim']
-        if model_dim == 1536:
+        if not self.i2v and model_dim == 1536:
             wan_config = wan_configs.t2v_1_3B
-        elif model_dim == 5120:
+        elif self.i2v and model_dim == 5120:
+            wan_config = wan_configs.i2v_14B
+        elif not self.i2v and model_dim == 5120:
             wan_config = wan_configs.t2v_14B
         else:
-            raise RuntimeError(f'Could not autodetect model variant. model_dim={model_dim}')
+            raise RuntimeError(f'Could not autodetect model variant. model_dim={model_dim}, i2v={self.i2v}')
 
         # This is the outermost class, which isn't a nn.Module
         self.text_encoder = T5EncoderModel(
@@ -171,6 +180,14 @@ class WanPipeline(BasePipeline):
         self.vae.std = self.vae.std.to('cuda')
         self.vae.scale = [self.vae.mean, 1.0 / self.vae.std]
 
+        if self.i2v:
+            self.clip = CLIPModel(
+                dtype=dtype,
+                device='cpu',
+                checkpoint_path=os.path.join(ckpt_dir, wan_config.clip_checkpoint),
+                tokenizer_path=os.path.join(ckpt_dir, wan_config.clip_tokenizer)
+            )
+
 
     # delay loading transformer to save RAM
     def load_diffusion_model(self):
@@ -191,7 +208,9 @@ class WanPipeline(BasePipeline):
         return getattr(self.diffusers_pipeline, name)
 
     def get_vae(self):
-        return self.vae.model
+        vae = self.vae.model
+        clip = self.clip.model if self.i2v else None
+        return VaeAndClip(vae, clip)
 
     def get_text_encoders(self):
         # Return the inner nn.Module
@@ -199,8 +218,7 @@ class WanPipeline(BasePipeline):
 
     def save_adapter(self, save_dir, peft_state_dict):
         self.peft_config.save_pretrained(save_dir)
-        # ComfyUI format. Will work with Kijai's ComfyUI-WanVideoWrapper, and hopefully the native ComfyUI
-        # implementation if/when that happens, as long as the internal module names don't change.
+        # ComfyUI format.
         peft_state_dict = {'diffusion_model.'+k: v for k, v in peft_state_dict.items()}
         safetensors.torch.save_file(peft_state_dict, save_dir / 'adapter_model.safetensors', metadata={'format': 'pt'})
 
@@ -217,10 +235,27 @@ class WanPipeline(BasePipeline):
             round_frames=4,
         )
 
-    def get_call_vae_fn(self, vae):
+    def get_call_vae_fn(self, vae_and_clip):
         def fn(tensor):
+            vae = vae_and_clip.vae
             p = next(vae.parameters())
-            return {'latents': vae_encode(tensor.to(p.device, p.dtype), self.vae)}
+            tensor = tensor.to(p.device, p.dtype)
+            latents = vae_encode(tensor, self.vae)
+            ret = {'latents': latents}
+            clip = vae_and_clip.clip
+            if clip is not None:
+                assert tensor.ndim == 5, f'i2v must train on videos, got tensor with shape {tensor.shape}'
+                first_frame = tensor[:, :, 0:1, ...].clone()
+                tensor[:, :, 1:, ...] = 0
+                # Image conditioning. Same shame as latents, first frame is unchanged, rest is 0.
+                # NOTE: encoding 0s with the VAE doesn't give you 0s in the latents, I tested this. So we need to
+                # encode the whole thing here, we can't just extract the first frame from the latents later and make
+                # the rest 0. But what happens if you do that? Probably things get fried, but might be worth testing.
+                y = vae_encode(tensor, self.vae)
+                clip_context = self.clip.visual(first_frame.to(p.device, p.dtype))
+                ret['y'] = y
+                ret['clip_context'] = clip_context
+            return ret
         return fn
 
     def get_call_text_encoder_fn(self, text_encoder):
@@ -240,8 +275,16 @@ class WanPipeline(BasePipeline):
         # TODO: why does text_embeddings become float32 here? It's bfloat16 coming out of the text encoder.
         text_embeddings = inputs['text_embeddings']
         seq_lens = inputs['seq_lens']
+        mask = inputs['mask']
+        y = inputs['y'] if self.i2v else None
+        clip_context = inputs['clip_context'] if self.i2v else None
 
         bs, channels, num_frames, h, w = latents.shape
+
+        if mask is not None:
+            mask = mask.unsqueeze(1)  # make mask (bs, 1, img_h, img_w)
+            mask = F.interpolate(mask, size=(h, w), mode='nearest-exact')  # resize to latent spatial dimension
+            mask = mask.unsqueeze(2)  # make mask same number of dims as target
 
         timestep_sample_method = self.model_config.get('timestep_sample_method', 'logit_normal')
 
@@ -275,11 +318,8 @@ class WanPipeline(BasePipeline):
         t = t * 1000
 
         return (
-            x_t,
-            t,
-            text_embeddings,
-            seq_lens,
-            target,
+            (x_t, y, t, text_embeddings, seq_lens, clip_context),
+            (target, mask),
         )
 
     def to_layers(self):
@@ -294,16 +334,17 @@ class WanPipeline(BasePipeline):
 class InitialLayer(nn.Module):
     def __init__(self, model):
         super().__init__()
-        assert model.model_type != 'i2v'
         self.patch_embedding = model.patch_embedding
         self.time_embedding = model.time_embedding
         self.text_embedding = model.text_embedding
         self.time_projection = model.time_projection
+        self.i2v = (model.model_type == 'i2v')
+        if self.i2v:
+            self.img_emb = model.img_emb
         self.model = [model]
 
     def __getattr__(self, name):
         return getattr(self.model[0], name)
-
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
@@ -311,12 +352,21 @@ class InitialLayer(nn.Module):
             if torch.is_floating_point(item):
                 item.requires_grad_(True)
 
-        x, t, context, text_seq_lens, target = inputs
+        x, y, t, context, text_seq_lens, clip_fea = inputs
+        bs, channels, f, h, w = x.shape
+        if clip_fea.numel() == 0:
+            clip_fea = None
         context = [emb[:length] for emb, length in zip(context, text_seq_lens)]
 
         device = self.patch_embedding.weight.device
         if self.freqs.device != device:
             self.freqs = self.freqs.to(device)
+
+        if self.i2v:
+            mask = torch.zeros((bs, 4, f, h, w), device=x.device, dtype=x.dtype)
+            mask[:, :, 0, ...] = 1
+            y = torch.cat([mask, y], dim=1)
+            x = [torch.cat([u, v], dim=0) for u, v in zip(x, y)]
 
         # embeddings
         x = [self.patch_embedding(u.unsqueeze(0)) for u in x]
@@ -345,11 +395,16 @@ class InitialLayer(nn.Module):
                 for u in context
             ]))
 
+        if self.i2v:
+            assert clip_fea is not None
+            context_clip = self.img_emb(clip_fea)  # bs x 257 x dim
+            context = torch.concat([context_clip, context], dim=1)
+
         # pipeline parallelism needs everything on the GPU
         seq_lens = seq_lens.to(x.device)
         grid_sizes = grid_sizes.to(x.device)
 
-        return make_contiguous(x, e, e0, seq_lens, grid_sizes, self.freqs, context, target)
+        return make_contiguous(x, e, e0, seq_lens, grid_sizes, self.freqs, context)
 
 
 class TransformerLayer(nn.Module):
@@ -359,9 +414,9 @@ class TransformerLayer(nn.Module):
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
-        x, e, e0, seq_lens, grid_sizes, freqs, context, target = inputs
+        x, e, e0, seq_lens, grid_sizes, freqs, context = inputs
         x = self.block(x, e0, seq_lens, grid_sizes, freqs, context, None)
-        return make_contiguous(x, e, e0, seq_lens, grid_sizes, freqs, context, target)
+        return make_contiguous(x, e, e0, seq_lens, grid_sizes, freqs, context)
 
 
 class FinalLayer(nn.Module):
@@ -375,12 +430,7 @@ class FinalLayer(nn.Module):
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
-        x, e, e0, seq_lens, grid_sizes, freqs, context, target = inputs
+        x, e, e0, seq_lens, grid_sizes, freqs, context = inputs
         x = self.head(x, e)
         x = self.unpatchify(x, grid_sizes)
-        output = torch.stack(x, dim=0)
-        with torch.autocast('cuda', enabled=False):
-            output = output.to(torch.float32)
-            target = target.to(torch.float32)
-            loss = F.mse_loss(output, target)
-        return loss
+        return torch.stack(x, dim=0)

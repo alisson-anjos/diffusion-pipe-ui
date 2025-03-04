@@ -243,10 +243,17 @@ class DirectoryDataset:
                 directory_config.get('resolutions', dataset_config['resolutions'])
             )
         self.path = Path(self.directory_config['path'])
+        self.mask_path = Path(self.directory_config['mask_path']) if 'mask_path' in self.directory_config else None
+        # For testing. Default if a mask is missing.
+        self.default_mask_file = Path(self.directory_config['default_mask_file']) if 'default_mask_file' in self.directory_config else None
         self.cache_dir = self.path / 'cache' / self.model_name
 
         if not self.path.exists() or not self.path.is_dir():
             raise RuntimeError(f'Invalid path: {self.path}')
+        if self.mask_path is not None and (not self.mask_path.exists() or not self.mask_path.is_dir()):
+            raise RuntimeError(f'Invalid mask_path: {self.mask_path}')
+        if self.default_mask_file is not None and (not self.default_mask_file.exists() or not self.default_mask_file.is_file()):
+            raise RuntimeError(f'Invalid default_mask_file: {self.default_mask_file}')
 
         if self.use_size_buckets:
             self.ars = np.array([w / h for w, h, _ in self.size_buckets])
@@ -281,8 +288,12 @@ class DirectoryDataset:
         # deterministic order
         files.sort()
 
+        # Mask can have any extension, it just needs to have the same stem as the image.
+        mask_file_stems = {path.stem: path for path in self.mask_path.glob('*') if path.is_file()} if self.mask_path is not None else {}
+
         image_files = []
         caption_files = []
+        mask_files = []
         for file in files:
             if not file.is_file() or file.suffix == '.txt' or file.suffix == '.npz':
                 continue
@@ -293,9 +304,17 @@ class DirectoryDataset:
                 caption_file = ''
             image_files.append(str(image_file))
             caption_files.append(str(caption_file))
+            if image_file.stem in mask_file_stems:
+                mask_files.append(str(mask_file_stems[image_file.stem]))
+            elif self.default_mask_file is not None:
+                mask_files.append(str(self.default_mask_file))
+            else:
+                if self.mask_path is not None:
+                    logger.warning(f'No mask file was found for image {image_file}, not using mask.')
+                mask_files.append(None)
         assert len(image_files) > 0, f'Directory {self.path} had no images/videos!'
 
-        metadata_dataset = datasets.Dataset.from_dict({'image_file': image_files, 'caption_file': caption_files})
+        metadata_dataset = datasets.Dataset.from_dict({'image_file': image_files, 'caption_file': caption_files, 'mask_file': mask_files})
         # Shuffle the data. Use a fixed seed, so the dataset is identical on all processes.
         # Processes other than rank 0 will then load it from cache.
         metadata_dataset = metadata_dataset.shuffle(seed=0)
@@ -370,7 +389,7 @@ class DirectoryDataset:
                 random.shuffle(tags)
                 caption = ', '.join(tags)
             caption = self.directory_config['caption_prefix'] + caption
-            empty_return = {'image_file': [], 'caption': [], 'ar_bucket': [], 'size_bucket': [], 'is_video': []}
+            empty_return = {'image_file': [], 'mask_file': [], 'caption': [], 'ar_bucket': [], 'size_bucket': [], 'is_video': []}
 
             image_file = Path(image_file)
             if image_file.suffix == '.webp':
@@ -414,7 +433,14 @@ class DirectoryDataset:
                     return empty_return
                 size_bucket = None
 
-            return {'image_file': [str(image_file)], 'caption': [caption], 'ar_bucket': [ar_bucket], 'size_bucket': [size_bucket], 'is_video': [is_video]}
+            return {
+                'image_file': [str(image_file)],
+                'mask_file': [example['mask_file'][0]],
+                'caption': [caption],
+                'ar_bucket': [ar_bucket],
+                'size_bucket': [size_bucket],
+                'is_video': [is_video]
+            }
         return fn
 
     def _find_closest_ar_bucket(self, log_ar, frames, is_video):
@@ -579,10 +605,29 @@ class Dataset:
     def _collate(self, examples):
         ret = {}
         for key, value in examples[0].items():
+            if key == 'mask':
+                continue  # mask is handled specially below
             if torch.is_tensor(value):
                 ret[key] = torch.stack([example[key] for example in examples])
             else:
                 ret[key] = [example[key] for example in examples]
+        # Only some items in the batch might have valid mask.
+        masks = [example['mask'] for example in examples]
+        # See if we have any valid masks. If we do, they should all have the same shape.
+        shape = None
+        for mask in masks:
+            if mask is not None:
+                assert shape is None or mask.shape == shape
+                shape = mask.shape
+        if shape is not None:
+            # At least one item has a mask. Need to make the None masks all 1s.
+            for i, mask in enumerate(masks):
+                if mask is None:
+                    masks[i] = torch.ones(shape, dtype=torch.float16)
+            ret['mask'] = torch.stack(masks)
+        else:
+            # We can leave the batch mask as None and the loss_fn will skip masking entirely.
+            ret['mask'] = None
         return ret
 
     def cache_metadata(self, regenerate_cache=False):
@@ -613,21 +658,22 @@ def _cache_fn(datasets, queue, preprocess_media_file_fn, num_text_encoders, rege
 
     def latents_map_fn(example, indices):
         first_size_bucket = example['size_bucket'][0]
-        tensors = []
+        tensors_and_masks = []
         te_idx = []
-        for idx, path, size_bucket in zip(indices, example['image_file'], example['size_bucket']):
+        for idx, path, mask_path, size_bucket in zip(indices, example['image_file'], example['mask_file'], example['size_bucket']):
             assert size_bucket == first_size_bucket
-            items = preprocess_media_file_fn(path, size_bucket)
-            tensors.extend(items)
+            items = preprocess_media_file_fn(path, mask_path, size_bucket)
+            tensors_and_masks.extend(items)
             te_idx.extend([idx] * len(items))
 
-        if len(tensors) == 0:
-            return {'latents': [], 'te_idx': []}
+        if len(tensors_and_masks) == 0:
+            return {'latents': [], 'mask': [], 'te_idx': []}
 
         caching_batch_size = len(example['image_file'])
         results = defaultdict(list)
-        for i in range(0, len(tensors), caching_batch_size):
-            batched = torch.stack(tensors[i:i+caching_batch_size])
+        for i in range(0, len(tensors_and_masks), caching_batch_size):
+            tensors = [t[0] for t in tensors_and_masks[i:i+caching_batch_size]]
+            batched = torch.stack(tensors)
             parent_conn, child_conn = mp.Pipe(duplex=False)
             queue.put((0, batched, child_conn))
             result = parent_conn.recv()  # dict
@@ -637,6 +683,7 @@ def _cache_fn(datasets, queue, preprocess_media_file_fn, num_text_encoders, rege
         for k, v in results.items():
             results[k] = torch.cat(v)
         results['te_idx'] = te_idx
+        results['mask'] = [t[1] for t in tensors_and_masks]
         return results
 
     for ds in datasets:
@@ -680,7 +727,7 @@ class DatasetManager:
     # further sending it to map() workers via the pickled map function, is broken. It gets through a lot of the caching,
     # but eventually, inevitably, queue.put() will fail with BrokenPipeError. Switching from multiprocessing to multiprocess,
     # which has basically the same API, and everything works perfectly. ¯\_(ツ)_/¯
-    def cache(self):
+    def cache(self, unload_models=True):
         if is_main_process():
             manager = mp.Manager()
             queue = [manager.Queue()]
@@ -714,14 +761,15 @@ class DatasetManager:
                 break
             self._handle_task(task)
 
-        # Free memory in all unneeded submodels. This is easier than trying to delete every reference.
-        # TODO: check if this is actually freeing memory.
-        for model in self.submodels:
-            if self.model.name == 'sdxl' and model is self.vae:
-                # If full fine tuning SDXL, we need to keep the VAE weights around for saving the model.
-                model.to('cpu')
-            else:
-                model.to('meta')
+        if unload_models:
+            # Free memory in all unneeded submodels. This is easier than trying to delete every reference.
+            # TODO: check if this is actually freeing memory.
+            for model in self.submodels:
+                if self.model.name == 'sdxl' and model is self.vae:
+                    # If full fine tuning SDXL, we need to keep the VAE weights around for saving the model.
+                    model.to('cpu')
+                else:
+                    model.to('meta')
 
         dist.barrier()
         if is_main_process():
@@ -759,12 +807,14 @@ class DatasetManager:
 
 
 def split_batch(batch, pieces):
-    example_tuple = batch
-    split_size = example_tuple[0].size(0) // pieces
-    split_examples = zip(*(torch.split(tensor, split_size) for tensor in example_tuple))
-    # Deepspeed works with a tuple of (features, labels), even if we don't provide a loss_fn to PipelineEngine,
-    # and instead compute the loss ourselves in the model. It's okay to just return None for the labels here.
-    return [(ex, None) for ex in split_examples]
+    # Each of features, label is a tuple of tensors.
+    features, label = batch
+    split_size = features[0].size(0) // pieces
+    # The tuples passed to Deepspeed need to only contain tensors. For None (e.g. mask, or optional conditioning), convert to empty tensor.
+    split_features = zip(*(torch.split(tensor, split_size) if tensor is not None else [torch.tensor([])]*pieces for tensor in features))
+    split_label = zip(*(torch.split(tensor, split_size) if tensor is not None else [torch.tensor([])]*pieces for tensor in label))
+    # Deepspeed works with a tuple of (features, labels).
+    return list(zip(split_features, split_label))
 
 
 # Splits an example (feature dict) along the batch dimension into a list of examples.
@@ -786,9 +836,10 @@ def split_batch(batch, pieces):
 # pipeline parallel training. Iterates indefinitely (deepspeed requirement). Keeps track of epoch.
 # Updates epoch as soon as the final batch is returned (notably different from qlora-pipe).
 class PipelineDataLoader:
-    def __init__(self, dataset, gradient_accumulation_steps, model, num_dataloader_workers=2):
+    def __init__(self, dataset, model_engine, gradient_accumulation_steps, model, num_dataloader_workers=2):
         self.model = model
         self.dataset = dataset
+        self.model_engine = model_engine
         self.gradient_accumulation_steps = gradient_accumulation_steps
         self.num_dataloader_workers = num_dataloader_workers
         self.iter_called = False
@@ -829,7 +880,7 @@ class PipelineDataLoader:
                 self.recreate_dataloader = False
             self.data = self._pull_batches_from_dataloader()
             self.num_batches_pulled = 0
-            self.next_micro_batch = next(self.data)
+            self.next_micro_batch = None
             self.epoch += 1
         return ret
 
@@ -849,10 +900,30 @@ class PipelineDataLoader:
 
     def _pull_batches_from_dataloader(self):
         for batch in self.dataloader:
-            batch = self.model.prepare_inputs(batch, timestep_quantile=self.eval_quantile)
+            features, label = self.model.prepare_inputs(batch, timestep_quantile=self.eval_quantile)
+            target, mask = label
+            # The target depends on the noise, so we must broadcast it from the first stage to the last.
+            # NOTE: I had to patch the pipeline parallel TrainSchedule so that the LoadMicroBatch commands
+            # would line up on the first and last stage so that this doesn't deadlock.
+            target = self._broadcast_target(target)
+            label = (target, mask)
             self.num_batches_pulled += 1
-            for micro_batch in split_batch(batch, self.gradient_accumulation_steps):
+            for micro_batch in split_batch((features, label), self.gradient_accumulation_steps):
                 yield micro_batch
+
+    def _broadcast_target(self, target):
+        model_engine = self.model_engine
+        if not model_engine.is_pipe_parallel:
+            return target
+
+        assert model_engine.is_first_stage() or model_engine.is_last_stage()
+        grid = model_engine.grid
+
+        src_rank = grid.stage_to_global(0)
+        assert src_rank in grid.pp_group
+        target = target.to('cuda')  # must be on GPU to broadcast
+        dist.broadcast(tensor=target, src=src_rank, group=model_engine.first_last_stage_group)
+        return target
 
     # Only the first and last stages in the pipeline pull from the dataloader. Parts of the code need
     # to know the epoch, so we synchronize the epoch so the processes that don't use the dataloader

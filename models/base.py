@@ -4,6 +4,7 @@ import re
 import peft
 import torch
 from torch import nn
+import torch.nn.functional as F
 import safetensors.torch
 import torchvision
 from PIL import Image, ImageOps
@@ -70,7 +71,7 @@ class PreprocessMediaFile:
         if self.support_video:
             assert self.framerate
 
-    def __call__(self, filepath, size_bucket=None):
+    def __call__(self, filepath, mask_filepath, size_bucket=None):
         is_video = (Path(filepath).suffix in VIDEO_EXTENSIONS)
         if is_video:
             assert self.support_video
@@ -93,23 +94,40 @@ class PreprocessMediaFile:
         height_rounded = round_to_nearest_multiple(size_bucket_height, self.round_height)
         width_rounded = round_to_nearest_multiple(size_bucket_width, self.round_width)
         frames_rounded = round_down_to_multiple(size_bucket_frames - 1, self.round_frames) + 1
+        resize_wh = (width_rounded, height_rounded)
+
+        if mask_filepath:
+            mask_img = Image.open(mask_filepath).convert('RGB')
+            img_hw = (height, width)
+            mask_hw = (mask_img.height, mask_img.width)
+            if mask_hw != img_hw:
+                raise ValueError(
+                    f'Mask shape {mask_hw} was not the same as image shape {img_hw}.\n'
+                    f'Image path: {filepath}\n'
+                    f'Mask path: {mask_filepath}'
+                )
+            mask_img = ImageOps.fit(mask_img, resize_wh)
+            mask = torchvision.transforms.functional.to_tensor(mask_img)[0].to(torch.float16)  # use first channel
+        else:
+            mask = None
 
         resized_video = torch.empty((num_frames, 3, height_rounded, width_rounded))
         for i, frame in enumerate(video):
             if not isinstance(frame, Image.Image):
                 frame = torchvision.transforms.functional.to_pil_image(frame)
-            cropped_image = convert_crop_and_resize(frame, (width_rounded, height_rounded))
+            cropped_image = convert_crop_and_resize(frame, resize_wh)
             resized_video[i, ...] = self.pil_to_tensor(cropped_image)
 
         if not self.support_video:
-            return [resized_video.squeeze(0)]
+            return [(resized_video.squeeze(0), mask)]
 
         # (num_frames, channels, height, width) -> (channels, num_frames, height, width)
         resized_video = torch.permute(resized_video, (1, 0, 2, 3))
         if not is_video:
-            return [resized_video]
+            return [(resized_video, mask)]
         else:
-            return extract_clips(resized_video, frames_rounded, self.video_clip_mode)
+            videos = extract_clips(resized_video, frames_rounded, self.video_clip_mode)
+            return [(video, mask) for video in videos]
 
 
 class BasePipeline:
@@ -208,3 +226,19 @@ class BasePipeline:
     # supports separate learning rates for unet and text encoders.
     def get_param_groups(self, parameters):
         return parameters
+
+    # Default loss_fn. MSE between output and target, with mask support.
+    def get_loss_fn(self):
+        def loss_fn(output, label):
+            target, mask = label
+            with torch.autocast('cuda', enabled=False):
+                output = output.to(torch.float32)
+                target = target.to(output.device, torch.float32)
+                loss = F.mse_loss(output, target, reduction='none')
+                # empty tensor means no masking
+                if mask.numel() > 0:
+                    mask = mask.to(output.device, torch.float32)
+                    loss *= mask
+                loss = loss.mean()
+            return loss
+        return loss_fn

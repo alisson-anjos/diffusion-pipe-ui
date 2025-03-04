@@ -8,6 +8,11 @@ from torch import nn
 import peft
 from peft.tuners._buffer_dict import BufferDict
 from transformers import CLIPTextModel, AutoModel
+import deepspeed
+from deepspeed.runtime.pipe.schedule import (
+    SendGrad, RecvActivation, SendActivation, RecvGrad, LoadMicroBatch, ForwardPass, BackwardPass,
+    ReduceTiedGrads, ReduceGrads, OptimizerStep,
+)
 
 import hyvideo.text_encoder
 from hyvideo.constants import PRECISION_TO_TYPE, TEXT_ENCODER_PATH
@@ -92,6 +97,56 @@ def load_text_encoder(
     return text_encoder, text_encoder_path
 
 
+def train_schedule_steps(self):
+    prev_micro_batch_id = -1
+    total_steps = 2 * (self.micro_batches + self.stages - 1)
+    for step_id in range(total_steps):
+        # Map the step of the pipeline to the micro-batch id and also whether it is a
+        # forward or backward pass step.
+        micro_batch_id, is_forward = self._step_to_micro_batch(step_id)
+
+        if self._valid_micro_batch(prev_micro_batch_id):
+            prev_buffer = self._buffer_idx(prev_micro_batch_id)
+        if self._valid_micro_batch(micro_batch_id):
+            curr_buffer = self._buffer_idx(micro_batch_id)
+
+        cmds = []
+
+        # First/last stage loads
+        if self.stage_id == 0 or self.stage_id == self.stages - 1:
+            if is_forward and self._valid_micro_batch(micro_batch_id):
+                cmds.append(LoadMicroBatch(curr_buffer))
+
+        # Exchange activations
+        if is_forward:
+            if self._valid_micro_batch(prev_micro_batch_id) and self._valid_stage(self.prev_stage):
+                cmds.append(SendGrad(prev_buffer))
+            if self._valid_micro_batch(micro_batch_id) and self._valid_stage(self.prev_stage):
+                cmds.append(RecvActivation(curr_buffer))
+        else:
+            if self._valid_micro_batch(micro_batch_id) and self._valid_stage(self.next_stage):
+                cmds.append(RecvGrad(curr_buffer))
+            if self._valid_micro_batch(prev_micro_batch_id) and self._valid_stage(self.next_stage):
+                cmds.append(SendActivation(prev_buffer))
+
+        # Computation
+        if self._valid_micro_batch(micro_batch_id):
+            if is_forward:
+                cmds.append(ForwardPass(curr_buffer))
+            else:
+                cmds.append(BackwardPass(curr_buffer))
+
+        # Model step at the end of the batch
+        if step_id == total_steps - 1:
+            cmds.append(ReduceTiedGrads())
+            cmds.append(ReduceGrads())
+            cmds.append(OptimizerStep())
+
+        # Prepare state for next time
+        prev_micro_batch_id = micro_batch_id
+        yield cmds
+
+
 def apply_patches():
     # Prevent PEFT from downcasting LoRA weights to fp8 only for this script to upcast them again.
     # TODO: probably should send a PR to PEFT. Default behavior looks like a mistake to me.
@@ -99,3 +154,8 @@ def apply_patches():
 
     # Use torch_dtype to avoid needlessly loading the text encoder in float32, only to cast it right after.
     hyvideo.text_encoder.load_text_encoder = load_text_encoder
+
+    # LoadMicroBatch before sending / receiving activations so we can avoid a deadlock and broadcast the target
+    # from the first stage to the last stage. InferenceSchedule already has the commands in the right order
+    # and doesn't need this.
+    deepspeed.runtime.pipe.schedule.TrainSchedule.steps = train_schedule_steps

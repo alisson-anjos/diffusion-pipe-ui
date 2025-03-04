@@ -285,6 +285,43 @@ if __name__ == '__main__':
         eval_data_map[name] = dataset_util.Dataset(eval_dataset_config, model, skip_dataset_validation=args.i_know_what_i_am_doing)
         dataset_manager.register(eval_data_map[name])
 
+    # For testing
+
+    # import imageio
+    # from pathlib import Path
+    # import torch.nn.functional as F
+    # dataset_manager.cache(unload_models=False)
+    # output_dir = Path('/home/anon/tmp')
+    # train_data.post_init(
+    #     0,
+    #     1,
+    #     1,
+    #     1,
+    # )
+    # vae = model.vae
+    # vae.model.to('cuda')
+    # count = 1
+    # for item in train_data:
+    #     latents = item['latents'].to('cuda')
+    #     h, w = latents.shape[-2:]
+    #     mask = item['mask'].to('cuda')
+    #     caption = item['caption'][0]
+    #     mask = mask.unsqueeze(1)  # make mask (bs, 1, img_h, img_w)
+    #     mask = F.interpolate(mask, size=(h, w), mode='nearest-exact')  # resize to latent spatial dimension
+    #     mask = mask.unsqueeze(2)  # make mask same number of dims as target
+    #     latents = latents * mask.to(latents.device)
+    #     video = vae.model.decode(latents, vae.scale).float().clamp_(-1, 1).squeeze(0)
+    #     video = torch.permute(video, (1, 2, 3, 0))
+    #     video = (video + 1) / 2
+    #     video = (video * 255).type(torch.uint8).cpu()
+    #     imageio.v3.imwrite(output_dir / f'{count}.mp4', video, fps=16)
+    #     with open(output_dir / f'{count}.txt', 'w') as f:
+    #         f.write(caption)
+    #     if count >= 10:
+    #         break
+    #     count += 1
+    # quit()
+
     dataset_manager.cache()
     if args.cache_only:
         quit()
@@ -336,6 +373,7 @@ if __name__ == '__main__':
         layers=layers,
         num_stages=config['pipeline_stages'],
         partition_method=config.get('partition_method', 'parameters'),
+        loss_fn=model.get_loss_fn(),
         **additional_pipeline_module_kwargs
     )
     parameters_to_train = [p for p in pipeline_model.parameters() if p.requires_grad]
@@ -443,6 +481,10 @@ if __name__ == '__main__':
         optimizer=get_optimizer,
         config=ds_config,
     )
+    if model_engine.is_pipe_parallel:
+        grid = model_engine.grid
+        model_engine.first_last_stage_group = dist.new_group(ranks=[grid.pp_group[0], grid.pp_group[-1]])
+    model.model_engine = model_engine
 
     lr_scheduler = torch.optim.lr_scheduler.ConstantLR(optimizer, factor=1.0)
     if config['warmup_steps'] > 0:
@@ -470,7 +512,7 @@ if __name__ == '__main__':
     communication_data_type = config['lora']['dtype'] if 'lora' in config else config['model']['dtype']
     model_engine.communication_data_type = communication_data_type
 
-    train_dataloader = dataset_util.PipelineDataLoader(train_data, model_engine.gradient_accumulation_steps(), model)
+    train_dataloader = dataset_util.PipelineDataLoader(train_data, model_engine, model_engine.gradient_accumulation_steps(), model)
 
     step = 1
     # make sure to do this before calling model_engine.set_dataloader(), as that method creates an iterator
@@ -504,7 +546,7 @@ if __name__ == '__main__':
     eval_dataloaders = {
         # Set num_dataloader_workers=0 so dataset iteration is completely deterministic.
         # We want the exact same noise for each image, each time, for a stable validation loss.
-        name: dataset_util.PipelineDataLoader(eval_data, config['eval_gradient_accumulation_steps'], model, num_dataloader_workers=0)
+        name: dataset_util.PipelineDataLoader(eval_data, model_engine, config['eval_gradient_accumulation_steps'], model, num_dataloader_workers=0)
         for name, eval_data in eval_data_map.items()
     }
 

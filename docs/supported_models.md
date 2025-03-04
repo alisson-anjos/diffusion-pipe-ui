@@ -143,6 +143,8 @@ dtype = 'bfloat16'
 timestep_sample_method = 'logit_normal'
 ```
 
-Wan2.1 t2v variants are supported. Set ckpt_path to the original model checkpoint directory, e.g. [Wan2.1-T2V-1.3B](https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B). The 1.3B is tested and confirmed working. I haven't tried the 14B yet. I don't know what the optimal training settings are.
+Both t2v and i2v Wan2.1 variants are supported. Set ckpt_path to the original model checkpoint directory, e.g. [Wan2.1-T2V-1.3B](https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B). The 1.3B is tested and confirmed working.
+
+For i2v training, you **MUST** train on a dataset of only videos. The training script will crash with an error otherwise. The first frame of each video clip is used as the image conditioning, and the model is trained to predict the rest of the video. Please pay attention to the video_clip_mode setting, and understand that if not set it will default to 'single_middle'. This may not be what you want if you are expecting the very first frame of the source video to be the conditioning. Only the 14B model has an i2v variant, and it requires training on videos, so VRAM requirements are high. You will need 48GB even for fairly short frame lengths.
 
 Wan2.1 LoRAs are saved in ComfyUI format.

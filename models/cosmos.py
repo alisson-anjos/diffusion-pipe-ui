@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.abspath('submodules/Cosmos'))
 
 import torch
 from torch import nn
+import torch.nn.functional as F
 from transformers import T5TokenizerFast, T5EncoderModel
 import accelerate
 from einops import rearrange
@@ -241,9 +242,15 @@ class CosmosPipeline(BasePipeline):
     def prepare_inputs(self, inputs, timestep_quantile=None):
         latents = inputs['latents'].float()
         prompt_embeds = inputs['prompt_embeds']
+        mask = inputs['mask']
 
         bs, channels, num_frames, h, w = latents.shape
         device = latents.device
+
+        if mask is not None:
+            mask = mask.unsqueeze(1)  # make mask (bs, 1, img_h, img_w)
+            mask = F.interpolate(mask, size=(h, w), mode='nearest-exact')  # resize to latent spatial dimension
+            mask = mask.unsqueeze(2)  # make mask same number of dims as target
 
         noise = torch.randn_like(latents)
 
@@ -261,7 +268,7 @@ class CosmosPipeline(BasePipeline):
         timesteps = c_noise
         target = latents
 
-        return x, x_t, timesteps, prompt_embeds, sigma, target
+        return (x, x_t, timesteps, prompt_embeds, sigma), (target, mask)
 
     def to_layers(self):
         layers = [InitialLayer(self.transformer, self.vae.spatial_compression)]
@@ -269,6 +276,23 @@ class CosmosPipeline(BasePipeline):
             layers.append(TransformerLayer(block))
         layers.append(FinalLayer(self))
         return layers
+
+    def get_loss_fn(self):
+        def loss_fn(output, label):
+            output, weights_per_sigma = output
+            target, mask = label
+            with torch.autocast('cuda', enabled=False):
+                output = output.to(torch.float32)
+                target = target.to(output.device, torch.float32)
+                loss = F.mse_loss(output, target, reduction='none')
+                # empty tensor means no masking
+                if mask.numel() > 0:
+                    mask = mask.to(output.device, torch.float32)
+                    loss *= mask
+                loss = loss * weights_per_sigma
+                loss = loss.mean()
+            return loss
+        return loss_fn
 
 
 class InitialLayer(nn.Module):
@@ -290,7 +314,7 @@ class InitialLayer(nn.Module):
             if torch.is_floating_point(item):
                 item.requires_grad_(True)
 
-        x, x_t, timesteps, crossattn_emb, sigma, target = inputs
+        x, x_t, timesteps, crossattn_emb, sigma = inputs
         original_shape = x.shape
         dtype = x.dtype
         device = x.device
@@ -344,7 +368,6 @@ class InitialLayer(nn.Module):
             extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D,
             original_shape,
             sigma,
-            target
         )
 
 
@@ -355,7 +378,7 @@ class TransformerLayer(nn.Module):
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
-        x, x_t, affline_emb_B_D, crossattn_emb, rope_emb_L_1_1_D, adaln_lora_B_3D, extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D, original_shape, sigma, target = inputs
+        x, x_t, affline_emb_B_D, crossattn_emb, rope_emb_L_1_1_D, adaln_lora_B_3D, extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D, original_shape, sigma = inputs
         x = self.block(
             x,
             affline_emb_B_D,
@@ -375,7 +398,6 @@ class TransformerLayer(nn.Module):
             extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D,
             original_shape,
             sigma,
-            target
         )
 
 
@@ -390,7 +412,7 @@ class FinalLayer(nn.Module):
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
-        x, x_t, affline_emb_B_D, crossattn_emb, rope_emb_L_1_1_D, adaln_lora_B_3D, extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D, original_shape, sigma, target = inputs
+        x, x_t, affline_emb_B_D, crossattn_emb, rope_emb_L_1_1_D, adaln_lora_B_3D, extra_pos_emb_B_T_H_W_D_or_T_H_W_B_D, original_shape, sigma = inputs
         original_shape = original_shape.tolist()
 
         x_B_T_H_W_D = rearrange(x, "T H W B D -> B T H W D")
@@ -408,8 +430,5 @@ class FinalLayer(nn.Module):
         c_out = c_out.view(-1, 1, 1, 1, 1)
         sigma = sigma.view(-1, 1, 1, 1, 1)
         x0_pred = c_skip*x_t + c_out*output
-        eps_pred = (x_t - x0_pred) / sigma
         weights_per_sigma = get_per_sigma_loss_weights(sigma)
-        pred_mse = (target - x0_pred) ** 2
-        loss = (pred_mse * weights_per_sigma).mean()
-        return loss
+        return x0_pred, weights_per_sigma

@@ -125,8 +125,13 @@ class Lumina2Pipeline(BasePipeline):
         latents = inputs['latents'].float()
         prompt_embeds = inputs['prompt_embeds']
         prompt_masks = inputs['prompt_masks']
+        mask = inputs['mask']
 
         bs, c, h, w = latents.shape
+
+        if mask is not None:
+            mask = mask.unsqueeze(1)  # make mask (bs, 1, img_h, img_w)
+            mask = F.interpolate(mask, size=(h, w), mode='nearest-exact')  # resize to latent spatial dimension
 
         timestep_sample_method = self.model_config.get('timestep_sample_method', 'logit_normal')
 
@@ -159,7 +164,7 @@ class Lumina2Pipeline(BasePipeline):
         target = latents - noise
 
         # If t is the amount of noise, then the timestep this model takes as input is 1-t.
-        return noisy_latents, 1-t, prompt_embeds, prompt_masks, target
+        return (noisy_latents, 1-t, prompt_embeds, prompt_masks), (target, mask)
 
     def to_layers(self):
         transformer = self.transformer
@@ -189,7 +194,7 @@ class InitialLayer(nn.Module):
         for item in inputs:
             if torch.is_floating_point(item):
                 item.requires_grad_(True)
-        x, t, cap_feats, cap_mask, target = inputs
+        x, t, cap_feats, cap_mask = inputs
 
         t = self.t_embedder(t)
         adaln_input = t
@@ -198,7 +203,7 @@ class InitialLayer(nn.Module):
         img_size = torch.tensor(img_size).to(x.device)
         cap_size = torch.tensor(cap_size).to(x.device)
         freqs_cis = freqs_cis.to(x.device)
-        return make_contiguous(x, mask, freqs_cis, adaln_input, img_size, cap_size, target)
+        return make_contiguous(x, mask, freqs_cis, adaln_input, img_size, cap_size)
 
     def patchify_and_embed(
         self, x: List[torch.Tensor] | torch.Tensor, cap_feats: torch.Tensor, cap_mask: torch.Tensor, t: torch.Tensor
@@ -296,9 +301,9 @@ class TransformerLayer(nn.Module):
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
-        x, mask, freqs_cis, adaln_input, img_size, cap_size, target = inputs
+        x, mask, freqs_cis, adaln_input, img_size, cap_size = inputs
         x = self.block(x, mask, freqs_cis, adaln_input)
-        return make_contiguous(x, mask, freqs_cis, adaln_input, img_size, cap_size, target)
+        return make_contiguous(x, mask, freqs_cis, adaln_input, img_size, cap_size)
 
 
 class FinalLayer(nn.Module):
@@ -315,12 +320,8 @@ class FinalLayer(nn.Module):
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
-        x, mask, freqs_cis, adaln_input, img_size, cap_size, target = inputs
+        x, mask, freqs_cis, adaln_input, img_size, cap_size = inputs
         x = self.final_layer(x, adaln_input)
         img_size = [(row[0].item(), row[1].item()) for row in img_size]
         cap_size = [row.item() for row in cap_size]
-        output = self.unpatchify(x, img_size, cap_size, return_tensor=True)
-        output = output.to(torch.float32)
-        target = target.to(torch.float32)
-        loss = F.mse_loss(output, target)
-        return loss
+        return self.unpatchify(x, img_size, cap_size, return_tensor=True)
