@@ -31,12 +31,6 @@ if [ ! -f "$INIT_MARKER" ]; then
     uv pip install /transformers-4.49.0.dev0-py3-none-any.whl
     uv pip install -r /requirements.txt
      
-    # echo "Installing CUDA nvcc..."
-    # conda install -y -c nvidia cuda-nvcc --override-channels
-
-    # echo "Installing dependencies from requirements.txt..."
-    # pip install --no-cache-dir -r $REPO_DIR/requirements-blackwell.txt
-
     # Create marker file
     touch "$INIT_MARKER"
     echo "Initialization complete."
