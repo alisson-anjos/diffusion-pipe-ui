@@ -166,11 +166,11 @@ class ChromaPipeline(BasePipeline):
     def get_text_encoders(self):
         return [self.text_encoder_2]
 
-    def save_adapter(self, save_dir, peft_state_dict):
+    def save_adapter(self, save_dir, peft_state_dict, save_name):
         self.peft_config.save_pretrained(save_dir)
         # ComfyUI format.
         peft_state_dict = {'diffusion_model.'+k: v for k, v in peft_state_dict.items()}
-        save_file(peft_state_dict, save_dir / 'adapter_model.safetensors', metadata={'format': 'pt'})
+        save_file(peft_state_dict, save_dir / f'{save_name}.safetensors', metadata={'format': 'pt'})
 
     def save_model(self, save_dir, diffusers_sd):
         save_file(diffusers_sd, save_dir / 'model.safetensors', metadata={"format": "pt"})

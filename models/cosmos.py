@@ -190,11 +190,11 @@ class CosmosPipeline(BasePipeline):
     def get_text_encoders(self):
         return [self.text_encoder]
 
-    def save_adapter(self, save_dir, peft_state_dict):
+    def save_adapter(self, save_dir, peft_state_dict, save_name):
         self.peft_config.save_pretrained(save_dir)
         # ComfyUI format.
         peft_state_dict = {'diffusion_model.'+k: v for k, v in peft_state_dict.items()}
-        safetensors.torch.save_file(peft_state_dict, save_dir / 'adapter_model.safetensors', metadata={'format': 'pt'})
+        safetensors.torch.save_file(peft_state_dict, save_dir / f'{save_name}.safetensors', metadata={'format': 'pt'})
 
     def get_preprocess_media_file_fn(self):
         return PreprocessMediaFile(
