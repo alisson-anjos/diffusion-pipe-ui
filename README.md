@@ -32,17 +32,13 @@ git submodule update
   - New interface developed in Blazor (dotnet).
   - Settings (paths, training commands, model downloads, etc.) are defined in the `appsettings.json` file (located at `diffusion-pipe/ui/deploy/appsettings.json`).
   - Integrated environment variables for container use, such as:
-    - `DOWNLOAD_MODELS`: (true/false) – controls whether models are automatically downloaded.
+    - `DOWNLOAD_MODELS`: (true/false) ï¿½ controls whether models are automatically downloaded.
     - `MODEL_GROUPS`: list of model groups to be processed (e.g., `"wan,hunyuan"`).
     - `WAN_VARIANTS`: if the "wan" group is configured, specifies the variants to download (e.g., `"I2V480P,T2V480P-14B"`).
   - Support for parallelism configuration via the **NUM_GPUS** parameter (or the `--num_gpus` flag).
 
 - **2025-01-17 (diffusion-pipe original)**
   - Fixes and improvements in training, including adjustments for hunyuanvideo VAE and enhancements in the quality of trained LoRAs.
-  - _[Entry kept for historical reference]_
-
-> **Tip:** Add new entries in this section as updates are released.
-
 ---
 
 ## Important Differences in This Fork
@@ -172,7 +168,7 @@ This repository offers three execution options:
 
 3. **Manual Execution (Without Docker)**  
    For direct use of the fork:  
-   - Configure `appsettings.json` (located at `diffusion-pipe/ui/deploy/appsettings.json`), adjusting paths according to your system’s structure.  
+   - Configure `appsettings.json` (located at `diffusion-pipe/ui/deploy/appsettings.json`), adjusting paths according to your systemï¿½s structure.  
    - Manually download the models and place them in the specified directories.  
    - For advanced interface customization, use the Visual Studio project located in `diffusion-pipe/ui/project` (the version in `ui/deploy` is precompiled).
 
@@ -235,7 +231,7 @@ If you choose to run the interface manually:
 
 2. **Configure `appsettings.json`:**  
    - Located at `diffusion-pipe/ui/deploy/appsettings.json`.  
-   - Adjust the paths for datasets, configs, outputs, and models according to your system’s structure.  
+   - Adjust the paths for datasets, configs, outputs, and models according to your systemï¿½s structure.  
    - **Note:** In this mode, automatic model downloading will not occur; you must download the models manually and place them in the specified directories.
 
 3. **Install .NET 9:**  
@@ -257,7 +253,7 @@ If you choose to run the interface manually:
 
 The `start-new-ui.sh` script automates the initial setup and launch of the Blazor interface. It performs the following tasks:
 
-- Checks if this is the first initialization and, if configured, downloads the models (using environment variables – container only).
+- Checks if this is the first initialization and, if configured, downloads the models (using environment variables ï¿½ container only).
 - Configures the necessary environment variables.
 - Executes the Blazor interface (eliminating the need to manually run the startup command).
 

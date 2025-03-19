@@ -154,7 +154,7 @@ Both t2v and i2v Wan2.1 variants are supported. Set ckpt_path to the original mo
 
 Download checkpoint but skip the transformer and UMT5:
 ```
-huggingface-cli download Wan-AI/Wan2.1-T2V-1.3B --local-dir Wan2.1-T2V-1.3B --exclude "diffusion_pytorch_model*" "*umt5*"
+huggingface-cli download Wan-AI/Wan2.1-T2V-1.3B --local-dir Wan2.1-T2V-1.3B --exclude "diffusion_pytorch_model*" "models_t5*"
 ```
 
 Then use this config:
