@@ -43,8 +43,8 @@
             var defaultConfig = Configuration.GetSection("Configurations:Models:LTX");
             if (defaultConfig != null)
             {
-                ModelConfiguration.DiffusersPath = defaultConfig["DiffusersPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
-                ModelConfiguration.SingleFilePath = defaultConfig["SingleFilePath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+                ModelConfiguration.DiffusersPath = string.IsNullOrEmpty(ModelConfiguration.DiffusersPath) ? defaultConfig["DiffusersPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.DiffusersPath;
+                ModelConfiguration.SingleFilePath = string.IsNullOrEmpty(ModelConfiguration.SingleFilePath) ? defaultConfig["SingleFilePath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath)! : ModelConfiguration.SingleFilePath;
             }
         }
     }

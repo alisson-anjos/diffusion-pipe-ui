@@ -46,7 +46,7 @@
             var defaultConfig = Configuration.GetSection("Configurations:Models:Wan21");
             if (defaultConfig != null)
             {
-                ModelConfiguration.CkptPath = defaultConfig["CkptPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+                ModelConfiguration.CkptPath = string.IsNullOrEmpty(ModelConfiguration.CkptPath) ? defaultConfig["CkptPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath)! : ModelConfiguration.CkptPath;
             }
         }
     }

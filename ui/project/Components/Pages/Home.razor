@@ -66,14 +66,18 @@
                                         <MudButton Variant="Variant.Outlined" Color="Color.Default" Disabled="!isTraining" FullWidth="true" OnClick="ForceSaveCheckpoint">Force Save Checkpoint</MudButton>
                                     </MudItem>
                                     <MudItem xs="12">
+                                        <MudPaper Class=" pa-4 align-start d-flex" Outlined="true">
+                                            <MudPaper Class="pa-3" Elevation="6">Steps: @InterfaceControl.CurrentStep / @InterfaceControl.TotalSteps</MudPaper>
+                                            <MudPaper Class="pa-3" Elevation="6">Steps per Epoch: @InterfaceControl.StepsPerEpoch</MudPaper>
+                                            <MudPaper Class="pa-3" Elevation="6">Current Epoch: @InterfaceControl.CurrentEpoch</MudPaper>
+                                        </MudPaper>
+                                    </MudItem>
+                                    <MudItem xs="12">
                                         <MudProgressLinear Color="Color.Tertiary" Size="Size.Large" Value="@InterfaceControl.ProgressValueTrain" />
                                     </MudItem>
-
                                 </MudGrid>
                             </MudCardContent>
                         </MudCard>
-
-                        <FileTreeView @ref=outputTreeViewRef Title="Output Directory" DirectoryPath="@Path.Combine(Configuration.OutputsPath!, datasetDirectoryConfigurationRef.DatasetsConfigurations.Name)"></FileTreeView>
                         @* <AlarmComponent/> *@
                     </MudItem>
                 </MudGrid>
@@ -82,12 +86,17 @@
         <MudItem xs="12">
             <MudTextField T="string" @ref=logOutputRef @bind-Value="outputText" Label="Output Logs" Typo="Typo.body2" ReadOnly="true" Variant="Variant.Outlined" Lines="50" MaxLines="Int32.MaxValue" />
         </MudItem>
+       @*  <MudItem xs="12">
+            <FileTreeView @ref=outputTreeViewRef Title="Output Directory" DirectoryPath="@Path.Combine(Configuration.OutputsPath!, datasetDirectoryConfigurationRef.DatasetsConfigurations.Name)"></FileTreeView>
+        </MudItem> *@
     </MudGrid>
 </MudContainer>
 
-
+<MudScrollToTop>
+    <MudFab Color="Color.Tertiary" StartIcon="@Icons.Material.Filled.ArrowCircleUp" />
+</MudScrollToTop>
 @code {
-    #nullable enable
+#nullable enable
     private bool isUploading = false;
     private string outputText { get; set; } = string.Empty;
     private bool isTraining { get; set; } = false;
@@ -311,7 +320,7 @@
         TrainConfiguration = trainConfig;
         await InvokeAsync(StateHasChanged);
     }
-   
+
     public void Dispose()
     {
         ProcessManager.LogReceived -= OnLogReceived;

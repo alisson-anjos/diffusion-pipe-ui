@@ -51,7 +51,7 @@
             var defaultConfig = Configuration.GetSection("Configurations:Models:SDXL");
             if (defaultConfig != null)
             {
-                ModelConfiguration.CheckpointPath = defaultConfig["CheckpointPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+                ModelConfiguration.CheckpointPath = string.IsNullOrEmpty(ModelConfiguration.CheckpointPath) ? defaultConfig["CheckpointPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.CheckpointPath;
             }
         }
     }

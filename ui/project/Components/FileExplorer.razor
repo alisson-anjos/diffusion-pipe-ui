@@ -1,0 +1,273 @@
+﻿@using System.IO
+@using System.Net.Http.Json
+@using DiffusionPipeInterface.ViewModels
+@using MudBlazor
+@inject HttpClient Http
+@inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
+
+<MudTabs Outlined="true" Position="Position.Left" Rounded="true" Border="true"
+         ApplyEffectsToContainer="true" Class="mt-8" PanelClass="pa-6">
+    <MudTabPanel Text="Dataset Directory">
+        <MudStack>
+             @DatasetDirectoryPath
+            <MudTreeView T="FileItemViewModel" Hover SelectionMode="SelectionMode.MultiSelection" TriState="false" Color="Color.Tertiary" MaxHeight="500px">
+                @foreach (var item in DatasetDirectoryFileStructure)
+                {
+                    <FileTreeViewItem Item="item" />
+                }
+            </MudTreeView>
+            <MudToolBar>
+                <MudTooltip Text="Refresh Files">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Refresh" Color="Color.Inherit" OnClick="() => { DatasetDirectoryFileStructure = Refresh(DatasetDirectoryPath); }" />
+                </MudTooltip>
+                <MudTooltip Text="Download Selected Files/Folders">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Download" OnClick="() => DownloadSelected(DatasetDirectoryPath, DatasetDirectoryFileStructure)" />
+                </MudTooltip>
+            </MudToolBar>
+        </MudStack>
+    </MudTabPanel>
+    <MudTabPanel Text="Models Directory">
+        <MudStack>
+            @ModelsDirectoryPath
+            <MudTreeView T="FileItemViewModel" Hover SelectionMode="SelectionMode.MultiSelection" TriState="false" Color="Color.Tertiary" MaxHeight="500px">
+                @foreach (var item in ModelsDirectoryFileStructure)
+                {
+                    <FileTreeViewItem Item="item" />
+                }
+            </MudTreeView>
+            <MudToolBar>
+                <MudTooltip Text="Refresh Files">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Refresh" Color="Color.Inherit" OnClick="() => { ModelsDirectoryFileStructure = Refresh(ModelsDirectoryPath); }" />
+                </MudTooltip>
+                @* <MudIconButton Icon="@Icons.Material.Outlined.Download" OnClick="() => DownloadSelected(ModelsDirectoryPath, ModelsDirectoryFileStructure)" /> *@
+            </MudToolBar>
+        </MudStack>
+
+    </MudTabPanel>
+    <MudTabPanel Text="Configs Directory">
+        <MudStack>
+            @ConfigsDirectoryPath
+            <MudTreeView T="FileItemViewModel" Hover SelectionMode="SelectionMode.MultiSelection" TriState="false" Color="Color.Tertiary" MaxHeight="500px">
+                @foreach (var item in ConfigsDirectoryStructure)
+                {
+                    <FileTreeViewItem Item="item" />
+                }
+            </MudTreeView>
+            <MudToolBar>
+                <MudTooltip Text="Refresh Files">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Refresh" Color="Color.Inherit" OnClick="() => { ConfigsDirectoryStructure = Refresh(ConfigsDirectoryPath); }" />
+                </MudTooltip>
+                <MudTooltip Text="Download Selected Files/Folders">
+                    <MudIconButton Icon="@Icons.Material.Outlined.Download" OnClick="() => DownloadSelected(ConfigsDirectoryPath, ConfigsDirectoryStructure)" />
+                </MudTooltip>
+            </MudToolBar>
+        </MudStack>
+    </MudTabPanel>
+    <MudTabPanel Text="Outputs Directory">
+        <MudStack>
+            @OutputsDirectoryPath
+            <MudTreeView T="FileItemViewModel" Hover SelectionMode="SelectionMode.MultiSelection" TriState="false" Color="Color.Tertiary" MaxHeight="500px">
+                @foreach (var item in OutputsDirectoryStructure)
+                {
+                    <FileTreeViewItem Item="item" />
+                }
+            </MudTreeView>
+            <MudToolBar>
+                <MudIconButton Icon="@Icons.Material.Outlined.Refresh" Color="Color.Inherit" OnClick="() => { OutputsDirectoryStructure = Refresh(OutputsDirectoryPath); }" />
+                <MudIconButton Icon="@Icons.Material.Outlined.Download" OnClick="() => DownloadSelected(OutputsDirectoryPath, OutputsDirectoryStructure)" />
+            </MudToolBar>
+        </MudStack>
+
+    </MudTabPanel>
+</MudTabs>
+
+@if (IsLoading)
+{
+    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-7" />
+}
+
+
+@code {
+
+    [Parameter]
+    [EditorRequired]
+    public string DatasetDirectoryPath { get; set; } = string.Empty;
+
+    [Parameter]
+    [EditorRequired]
+    public string ModelsDirectoryPath { get; set; } = string.Empty;
+
+    [Parameter]
+    [EditorRequired]
+    public string ConfigsDirectoryPath { get; set; } = string.Empty;
+
+    [Parameter]
+    [EditorRequired]
+    public string OutputsDirectoryPath { get; set; } = string.Empty;
+
+    [Parameter]
+    public string Title { get; set; } = string.Empty;
+
+    private bool IsLoading { get; set; } = false;
+
+    private List<FileItemViewModel> DatasetDirectoryFileStructure = new List<FileItemViewModel>();
+    private List<FileItemViewModel> ModelsDirectoryFileStructure = new List<FileItemViewModel>();
+    private List<FileItemViewModel> ConfigsDirectoryStructure = new List<FileItemViewModel>();
+    private List<FileItemViewModel> OutputsDirectoryStructure = new List<FileItemViewModel>();
+
+    protected override void OnInitialized()
+    {
+        if (!string.IsNullOrEmpty(DatasetDirectoryPath))
+        {
+            DatasetDirectoryFileStructure = LoadFileStructure(DatasetDirectoryPath);
+        }
+
+        if (!string.IsNullOrEmpty(ModelsDirectoryPath))
+        {
+            ModelsDirectoryFileStructure = LoadFileStructure(ModelsDirectoryPath);
+        }
+
+        if (!string.IsNullOrEmpty(ConfigsDirectoryPath))
+        {
+            ConfigsDirectoryStructure = LoadFileStructure(ConfigsDirectoryPath);
+        }
+
+        if (!string.IsNullOrEmpty(OutputsDirectoryPath))
+        {
+            OutputsDirectoryStructure = LoadFileStructure(OutputsDirectoryPath);
+        }
+
+        StateHasChanged();
+    }
+
+    public List<FileItemViewModel> LoadFileStructure(string path)
+    {
+        if (Directory.Exists(path))
+        {
+            var directoryInfo = new DirectoryInfo(path);
+            return LoadDirectory(directoryInfo);
+        }
+        return new List<FileItemViewModel>();
+    }
+
+    public List<FileItemViewModel> Refresh(string directoryPath)
+    {
+        if (Directory.Exists(directoryPath))
+        {
+            var directoryInfo = new DirectoryInfo(directoryPath);
+            return LoadDirectory(directoryInfo);
+        }
+
+        return new List<FileItemViewModel>();
+
+        // if (Directory.Exists(ModelsDirectoryPath))
+        // {
+        //     var directoryInfo = new DirectoryInfo(ModelsDirectoryPath);
+        //     ModelsDirectoryFileStructure = LoadDirectory(directoryInfo);
+        // }
+        // if (Directory.Exists(ConfigsDirectoryPath))
+        // {
+        //     var directoryInfo = new DirectoryInfo(ConfigsDirectoryPath);
+        //     ConfigsDirectoryStructure = LoadDirectory(directoryInfo);
+        // }
+        // if (Directory.Exists(OutputsDirectoryPath))
+        // {
+        //     var directoryInfo = new DirectoryInfo(OutputsDirectoryPath);
+        //     OutputsDirectoryStructure = LoadDirectory(directoryInfo);
+        // }
+
+    }
+
+    private List<FileItemViewModel> LoadDirectory(DirectoryInfo directoryInfo)
+    {
+        var items = new List<FileItemViewModel>();
+
+        foreach (var dir in directoryInfo.GetDirectories())
+        {
+            var directoryItem = new FileItemViewModel
+                {
+                    Name = dir.Name,
+                    IsDirectory = true,
+                    Icon = Icons.Material.Outlined.Folder,
+                    IconExpanded = Icons.Material.Outlined.FolderOpen,
+                    FullPath = dir.FullName,
+                    Children = LoadDirectory(dir)
+                };
+            items.Add(directoryItem);
+        }
+
+        foreach (var file in directoryInfo.GetFiles())
+        {
+            var fileItem = new FileItemViewModel
+                {
+                    Name = file.Name,
+                    IsDirectory = false,
+                    Icon = Icons.Material.Outlined.Description,
+                    FullPath = file.FullName
+                };
+            items.Add(fileItem);
+        }
+
+        return items;
+    }
+
+
+    private IEnumerable<FileItemViewModel> Flatten(FileItemViewModel item)
+    {
+        yield return item;
+        if (item.IsDirectory && item.Children != null)
+        {
+            foreach (var child in item.Children.SelectMany(Flatten))
+            {
+                yield return child;
+            }
+        }
+    }
+
+
+    private async Task DownloadSelected(string directoryBase, List<FileItemViewModel> directoryStructure)
+    {
+        IsLoading = true;
+        StateHasChanged();
+        try
+        {
+            var selectedFiles = directoryStructure
+                .SelectMany(item => Flatten(item))
+                .Where(file => !file.IsDirectory && file.IsSelected)
+                .Select(file => file.FullPath)
+                .ToList();
+
+            if (!selectedFiles.Any())
+            {
+                return;
+            }
+
+            var downloadRequest = new DownloadRequest
+                {
+                    SelectedFiles = selectedFiles,
+                    BaseDirectory = directoryBase
+                };
+
+            var prepareResponse = await Http.PostAsJsonAsync("/prepare-download", downloadRequest);
+            if (prepareResponse.IsSuccessStatusCode)
+            {
+                var tempZipPath = await prepareResponse.Content.ReadFromJsonAsync<string>();
+                if (!string.IsNullOrEmpty(tempZipPath))
+                {
+                    var downloadUrl = $"/download-zip?file={Uri.EscapeDataString(tempZipPath)}";
+                    NavigationManager.NavigateTo(downloadUrl, forceLoad: true);
+                }
+            }
+            else
+            {
+            }
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+
+        StateHasChanged();
+    }
+}

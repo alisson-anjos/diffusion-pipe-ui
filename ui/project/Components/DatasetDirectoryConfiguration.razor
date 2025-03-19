@@ -172,7 +172,21 @@
     </MudCard>
 </MudForm>
 
-<FileTreeView @ref="fileTreeViewRef" Title="Dataset Directory" DirectoryPath="@Path.Combine(Configuration.DatasetsPath!, DatasetsConfigurations.Name)"></FileTreeView>
+<FileExplorer DatasetDirectoryPath="@Path.Combine(Configuration.DatasetsPath, DatasetsConfigurations.Name)" ConfigsDirectoryPath="@Configuration.ConfigsPath" ModelsDirectoryPath="@Configuration.ModelsPath" OutputsDirectoryPath="@Configuration.OutputsPath"></FileExplorer>
+
+@* <MudTabs Outlined="true" Position="Position.Left" Rounded="true" Border="true"
+    ApplyEffectsToContainer="true" Class="mt-8" PanelClass="pa-6">
+    <MudTabPanel Text="Dataset Directory">
+        <FileTreeView @ref="datasetDirectoryRef" Title="Dataset Directory" DirectoryPath="@Path.Combine(Configuration.DatasetsPath!, DatasetsConfigurations.Name)"></FileTreeView>
+    </MudTabPanel>
+    <MudTabPanel Text="Models Directory">
+        <FileTreeView @ref="modelsDirectoryRef" Title="Models Directory" DirectoryPath="@Configuration.ModelsPath"></FileTreeView>
+    </MudTabPanel>
+    <MudTabPanel Text="Item Three">
+        <MudText>Content Three</MudText>
+    </MudTabPanel>
+</MudTabs> *@
+
 
 @code {
     public DatasetConfigurationViewModel DatasetsConfigurations { get; set; } = null!;
@@ -201,7 +215,9 @@
 
     private SemaphoreSlim semaphore = new SemaphoreSlim(3);
 
-    private FileTreeView fileTreeViewRef;
+    private FileTreeView datasetDirectoryRef;
+    private FileTreeView modelsDirectoryRef;
+
 
 
     protected override Task OnInitializedAsync()
@@ -516,9 +532,9 @@
 
             UpdateTotalFilesInDirectories();
 
-            if (fileTreeViewRef != null)
+            if (datasetDirectoryRef != null)
             {
-                fileTreeViewRef.LoadFileStructure(Path.Combine(Configuration.DatasetsPath!, DatasetsConfigurations!.Name));
+                datasetDirectoryRef.LoadFileStructure(Path.Combine(Configuration.DatasetsPath!, DatasetsConfigurations!.Name));
             }
 
             await ConfigsChanged.InvokeAsync(TrainConfiguration);

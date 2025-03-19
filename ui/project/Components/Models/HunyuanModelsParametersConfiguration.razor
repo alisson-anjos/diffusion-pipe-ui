@@ -62,11 +62,11 @@ else
             var hunyuanDefaultConfig = Configuration.GetSection("Configurations:Models:Hunyuan");
             if (hunyuanDefaultConfig != null)
             {
-                ModelConfiguration.CkptPath = hunyuanDefaultConfig["CkptPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
-                ModelConfiguration.TransformerPath = hunyuanDefaultConfig["TransformerPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
-                ModelConfiguration.VaePath = hunyuanDefaultConfig["VaePath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
-                ModelConfiguration.ClipPath = hunyuanDefaultConfig["ClipPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
-                ModelConfiguration.LlmPath = hunyuanDefaultConfig["LlmPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+                ModelConfiguration.CkptPath = string.IsNullOrEmpty(ModelConfiguration.CkptPath) ? hunyuanDefaultConfig["CkptPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath)! : ModelConfiguration.CkptPath;
+                ModelConfiguration.TransformerPath = string.IsNullOrEmpty(ModelConfiguration.TransformerPath) ? hunyuanDefaultConfig["TransformerPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.TransformerPath;
+                ModelConfiguration.VaePath = string.IsNullOrEmpty(ModelConfiguration.VaePath) ? hunyuanDefaultConfig["VaePath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.VaePath;
+                ModelConfiguration.ClipPath = string.IsNullOrEmpty(ModelConfiguration.ClipPath) ? hunyuanDefaultConfig["ClipPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.ClipPath;
+                ModelConfiguration.LlmPath = string.IsNullOrEmpty(ModelConfiguration.LlmPath) ? hunyuanDefaultConfig["LlmPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.LlmPath;
             }
         }
     }

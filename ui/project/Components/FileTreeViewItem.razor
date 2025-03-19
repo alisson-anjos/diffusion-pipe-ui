@@ -1,0 +1,60 @@
+﻿@using DiffusionPipeInterface.ViewModels
+@inject IJSRuntime JSRuntime
+
+@if (Item.IsDirectory)
+{
+
+    <MudTreeViewItem Text="@Item.Name"
+                     Value="@Item"
+                     @bind-Expanded="Item.IsExpanded"
+                     Icon="@Item.Icon"
+                     IconExpanded="@Item.IconExpanded">
+        <BodyContent>
+            <MudMenu FullWidth="true" ActivationEvent="@MouseEvent.RightClick">
+                <ActivatorContent>
+                    <MudText>@Item.Name</MudText>
+                </ActivatorContent>
+                <ChildContent>
+                    <MudMenuItem Label="Copy Full Path" OnClick="@(()=> CopyPath(Item.FullPath))" />
+                </ChildContent>
+            </MudMenu>
+        </BodyContent>
+        <ChildContent>
+            @foreach (var child in Item.Children)
+            {
+                <FileTreeViewItem Item="child" />
+            }
+        </ChildContent>
+    </MudTreeViewItem>
+}
+else
+{
+    <MudTreeViewItem Text="@Item.Name"
+                     Value="@Item"
+                     @bind-Selected="Item.IsSelected"
+                     Icon="@Item.Icon">
+        <BodyContent>
+            <MudMenu FullWidth="true" ActivationEvent="@MouseEvent.RightClick">
+                <ActivatorContent>
+                    <MudText>@Item.Name</MudText>
+                </ActivatorContent>
+                <ChildContent>
+                    <MudMenuItem Label="Copy Full Path" OnClick="@(()=> CopyPath(Item.FullPath))" />
+                </ChildContent>
+            </MudMenu>
+        </BodyContent>
+    </MudTreeViewItem>
+}
+
+@code {
+    [Parameter]
+    public FileItemViewModel Item { get; set; } = new FileItemViewModel();
+
+    private async Task CopyPath(string path)
+    {
+        if (!string.IsNullOrEmpty(path))
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", path);
+        }
+    }
+}

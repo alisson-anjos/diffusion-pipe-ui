@@ -6,7 +6,7 @@
 @inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
 
-<MudCard Outlined="true" Elevation="3" Class="my-2">
+@* <MudCard Outlined="true" Elevation="3" Class="my-2">
     <MudCardHeader>
         <CardHeaderContent>
             <MudText Typo="Typo.h6">@Title</MudText>
@@ -15,7 +15,7 @@
             <MudIconButton Icon="@Icons.Material.Outlined.Refresh" OnClick="() => Refresh()" Color="Color.Default" />
         </CardHeaderActions>
     </MudCardHeader>
-    <MudCardContent>
+    <MudCardContent> *@
         <MudTreeView T="FileItem"
         Hover
         SelectionMode="SelectionMode.MultiSelection"
@@ -66,12 +66,12 @@
                 </MudTreeViewItem>
             }
         </MudTreeView>
-    </MudCardContent>
+@*     </MudCardContent>
     <MudCardActions>
         <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" OnClick="DownloadSelected">Download selected files (.zip)</MudButton>
     </MudCardActions>
 </MudCard>
-
+ *@
 
 @if (IsLoading)
 {

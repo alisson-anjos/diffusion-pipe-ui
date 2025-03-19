@@ -34,9 +34,10 @@
             var defaultConfig = Configuration.GetSection("Configurations:Models:Cosmos");
             if (defaultConfig != null)
             {
-                ModelConfiguration.TransformerPath = defaultConfig["TransformerPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
-                ModelConfiguration.VaePath = defaultConfig["VaePath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
-                ModelConfiguration.TextEncoderPath = defaultConfig["TextEncoderPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+
+                ModelConfiguration.TransformerPath = string.IsNullOrEmpty(ModelConfiguration.TransformerPath) ? defaultConfig["TransformerPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.TransformerPath;
+                ModelConfiguration.VaePath = string.IsNullOrEmpty(ModelConfiguration.VaePath) ? defaultConfig["VaePath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.VaePath;
+                ModelConfiguration.TextEncoderPath = string.IsNullOrEmpty(ModelConfiguration.TextEncoderPath) ? defaultConfig["TextEncoderPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.TextEncoderPath;
             }
         }
     }

@@ -43,9 +43,9 @@
             var defaultConfig = Configuration.GetSection("Configurations:Models:Lumina");
             if (defaultConfig != null)
             {
-                ModelConfiguration.TransformerPath = defaultConfig["TransformerPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
-                ModelConfiguration.VaePath = defaultConfig["VaePath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
-                ModelConfiguration.LlmPath = defaultConfig["LlmPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+                ModelConfiguration.TransformerPath = string.IsNullOrEmpty(ModelConfiguration.TransformerPath) ? defaultConfig["TransformerPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.TransformerPath;
+                ModelConfiguration.VaePath = string.IsNullOrEmpty(ModelConfiguration.VaePath) ? defaultConfig["VaePath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.VaePath;
+                ModelConfiguration.LlmPath = string.IsNullOrEmpty(ModelConfiguration.LlmPath) ? defaultConfig["LlmPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.LlmPath;
             }
         }
     }

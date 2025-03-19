@@ -52,8 +52,8 @@
             var defaultConfig = Configuration.GetSection("Configurations:Models:Flux");
             if (defaultConfig != null)
             {
-                ModelConfiguration.TransformerPath = defaultConfig["TransformerPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
-                ModelConfiguration.DiffusersPath = defaultConfig["DiffusersPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+                ModelConfiguration.TransformerPath = string.IsNullOrEmpty(ModelConfiguration.TransformerPath) ? defaultConfig["TransformerPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.TransformerPath;
+                ModelConfiguration.DiffusersPath = string.IsNullOrEmpty(ModelConfiguration.DiffusersPath) ? defaultConfig["DiffusersPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.DiffusersPath;
             }
         }
     }

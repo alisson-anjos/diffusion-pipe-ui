@@ -43,8 +43,8 @@
             var defaultConfig = Configuration.GetSection("Configurations:Models:Chroma");
             if (defaultConfig != null)
             {
-                ModelConfiguration.DiffusersPath = defaultConfig["DiffusersPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
-                ModelConfiguration.TransformerPath = defaultConfig["TransformerPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+                ModelConfiguration.DiffusersPath = string.IsNullOrEmpty(ModelConfiguration.DiffusersPath) ? defaultConfig["DiffusersPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.DiffusersPath;
+                ModelConfiguration.TransformerPath = string.IsNullOrEmpty(ModelConfiguration.TransformerPath) ? defaultConfig["TransformerPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.TransformerPath;
             }
         }
     }
