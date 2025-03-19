@@ -69,7 +69,7 @@
                                         <MudPaper Class=" pa-4 align-start d-flex" Outlined="true">
                                             <MudPaper Class="pa-3" Elevation="6">Steps: @InterfaceControl.CurrentStep / @InterfaceControl.TotalSteps</MudPaper>
                                             <MudPaper Class="pa-3" Elevation="6">Steps per Epoch: @InterfaceControl.StepsPerEpoch</MudPaper>
-                                            <MudPaper Class="pa-3" Elevation="6">Current Epoch: @InterfaceControl.CurrentEpoch</MudPaper>
+                                            <MudPaper Class="pa-3" Elevation="6">Epochs: @InterfaceControl.CurrentEpoch / @TrainConfiguration.Epochs</MudPaper>
                                         </MudPaper>
                                     </MudItem>
                                     <MudItem xs="12">
@@ -86,7 +86,7 @@
         <MudItem xs="12">
             <MudTextField T="string" @ref=logOutputRef @bind-Value="outputText" Label="Output Logs" Typo="Typo.body2" ReadOnly="true" Variant="Variant.Outlined" Lines="50" MaxLines="Int32.MaxValue" />
         </MudItem>
-       @*  <MudItem xs="12">
+        @*  <MudItem xs="12">
             <FileTreeView @ref=outputTreeViewRef Title="Output Directory" DirectoryPath="@Path.Combine(Configuration.OutputsPath!, datasetDirectoryConfigurationRef.DatasetsConfigurations.Name)"></FileTreeView>
         </MudItem> *@
     </MudGrid>
@@ -96,7 +96,7 @@
     <MudFab Color="Color.Tertiary" StartIcon="@Icons.Material.Filled.ArrowCircleUp" />
 </MudScrollToTop>
 @code {
-#nullable enable
+    #nullable enable
     private bool isUploading = false;
     private string outputText { get; set; } = string.Empty;
     private bool isTraining { get; set; } = false;
@@ -256,6 +256,11 @@
 
                 isTraining = true;
                 outputText = "Starting training...\n";
+
+                InterfaceControl.ProgressValueTrain = 0;
+                InterfaceControl.CurrentStep = 0;
+                InterfaceControl.CurrentEpoch = 0;
+                InterfaceControl.StepsPerEpoch = 0;
 
                 var command = Configuration.StartTrainingCommand;
                 command = command.Replace("{EnvPath}", Configuration.EnvPath)
