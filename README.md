@@ -39,10 +39,6 @@ git submodule update
 
 - **2025-01-17 (diffusion-pipe original)**
   - Fixes and improvements in training, including adjustments for hunyuanvideo VAE and enhancements in the quality of trained LoRAs.
-  - _[Entry kept for historical reference]_
-
-> **Tip:** Add new entries in this section as updates are released.
-
 ---
 
 ## Important Differences in This Fork
