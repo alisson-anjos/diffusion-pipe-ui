@@ -6,6 +6,8 @@ DOWNLOAD_MODELS=${DOWNLOAD_MODELS:-"true"}    # Default if not set
 DOWNLOAD_BF16=${DOWNLOAD_BF16:-"false"}         # Default if not set
 REPO_DIR=${REPO_DIR:-"/workspace/diffusion-pipe"}
 MODELS_DIR="/workspace/models"
+VIRTUAL_ENV="$REPO_DIR/venv"
+PATH="$VIRTUAL_ENV/bin:$PATH"
 
 echo "DOWNLOAD_MODELS is: $DOWNLOAD_MODELS and DOWNLOAD_BF16 is: $DOWNLOAD_BF16"
 
@@ -15,20 +17,12 @@ echo "DOWNLOAD_MODELS is: $DOWNLOAD_MODELS and DOWNLOAD_BF16 is: $DOWNLOAD_BF16"
 if [ ! -f "$INIT_MARKER" ]; then
     echo "First-time initialization..."
 
-    # Setup virtual environment
-    export VIRTUAL_ENV="/workspace/venv"
-    export PATH="$VIRTUAL_ENV/bin:$PATH"
-    
-    uv venv $VIRTUAL_ENV --python $PYTHON_VERSION
-    
-    uv pip install ninja wheel setuptools
+    # blackwell architecture
     # uv pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128
-    uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
-    uv pip install /triton-3.2.0-cp312-cp312-linux_x86_64.whl
-    uv pip install /sageattention-2.1.1-cp312-cp312-linux_x86_64.whl
-    uv pip install /flash_attn-2.7.4.post1-cp312-cp312-linux_x86_64.whl
-    uv pip install /transformers-4.49.0.dev0-py3-none-any.whl
-    uv pip install -r /requirements.txt
+    # uv pip install /triton-3.2.0-cp312-cp312-linux_x86_64.whl
+    # uv pip install /sageattention-2.1.1-cp312-cp312-linux_x86_64.whl
+    # uv pip install /flash_attn-2.7.4.post1-cp312-cp312-linux_x86_64.whl
+    # uv pip install /transformers-4.49.0.dev0-py3-none-any.whl
      
     # Create marker file
     touch "$INIT_MARKER"

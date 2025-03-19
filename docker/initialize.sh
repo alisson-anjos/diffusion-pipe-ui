@@ -37,11 +37,16 @@ mkdir -p /workspace
 echo "Copying diffusion-pipe to /workspace..."
 cp -rf /diffusion-pipe /workspace/
 
+echo "Copying venv to /workspace/diffusion-pipe/venv..."
+cp -rf /.venv /workspace/diffusion-pipe/venv
+
 # echo "Updating diffusion-pipe..."
 # cd /workspace/diffusion-pipe 
 # git pull --verbose
 
 cp -f /entrypoint.sh /workspace/entrypoint.sh
+
+echo "Starting entrypoint.sh..."
 
 bash /workspace/entrypoint.sh
 

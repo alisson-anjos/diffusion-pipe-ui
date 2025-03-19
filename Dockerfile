@@ -62,14 +62,19 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
 COPY requirements.txt .
 
-RUN uv pip install jupyterlab ipywidgets jupyter-archive jupyter_contrib_nbextensions nodejs --system
+RUN uv venv .venv --python $PYTHON_VERSION && \
+uv pip install ninja wheel setuptools --system && \
+uv pip install torch && \
+uv pip install --no-build-isolation flash-attn && \
+uv pip install -r requirements.txt && \
+uv pip install jupyterlab ipywidgets jupyter-archive jupyter_contrib_nbextensions nodejs --system && \
+uv pip install -U "huggingface_hub[cli]" --system
 
-RUN uv pip install -U "huggingface_hub[cli]" --system
-
-COPY triton-3.2.0-cp312-cp312-linux_x86_64.whl .
-COPY sageattention-2.1.1-cp312-cp312-linux_x86_64.whl .
-COPY flash_attn-2.7.4.post1-cp312-cp312-linux_x86_64.whl .
-COPY transformers-4.49.0.dev0-py3-none-any.whl .
+# blackwell architecture
+# COPY triton-3.2.0-cp312-cp312-linux_x86_64.whl .
+# COPY sageattention-2.1.1-cp312-cp312-linux_x86_64.whl .
+# COPY flash_attn-2.7.4.post1-cp312-cp312-linux_x86_64.whl .
+# COPY transformers-4.49.0.dev0-py3-none-any.whl .
 
 EXPOSE 8888
 
