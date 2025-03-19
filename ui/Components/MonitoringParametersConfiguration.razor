@@ -7,13 +7,16 @@
     </MudCardHeader>
     <MudCardContent>
         <MudGrid>
-            <MudItem xs="4">
+            <MudItem xs="3">
+                <MudSwitch T="bool" @bind-Value="TrainConfiguration.MonitoringConfiguration.EnableWandb" Color="Color.Primary" Disabled="Locked" Label="Enable Wandb" />
+            </MudItem>
+            <MudItem xs="3">
                 <MudTextField @bind-Value="TrainConfiguration.MonitoringConfiguration.WandbRunName" Label="Wandb Run Name" Disabled="Locked" Variant="Variant.Outlined"></MudTextField>
             </MudItem>
-            <MudItem xs="4">
+            <MudItem xs="3">
                 <MudTextField @bind-Value="TrainConfiguration.MonitoringConfiguration.WandbTrackerName" Label="Wandb Tracker Name" Disabled="Locked" Variant="Variant.Outlined"></MudTextField>
             </MudItem>
-            <MudItem xs="4">
+            <MudItem xs="3">
                 <MudTextField InputType="InputType.Password" @bind-Value="TrainConfiguration.MonitoringConfiguration.WandbApiKey" Label="Wandb Tracker Name" Disabled="Locked" Variant="Variant.Outlined"></MudTextField>
             </MudItem>
         </MudGrid>

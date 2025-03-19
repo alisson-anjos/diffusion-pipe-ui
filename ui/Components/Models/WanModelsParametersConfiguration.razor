@@ -46,7 +46,7 @@
             var defaultConfig = Configuration.GetSection("Configurations:Models:Wan21");
             if (defaultConfig != null)
             {
-                ModelConfiguration.CheckpointPath = defaultConfig["CheckpointPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+                ModelConfiguration.CkptPath = defaultConfig["CheckpointPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
             }
         }
     }

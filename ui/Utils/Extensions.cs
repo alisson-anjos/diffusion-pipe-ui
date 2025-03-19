@@ -138,7 +138,7 @@ namespace DiffusionPipeInterface.Utils
 
             var trainConfig = Toml.ToModel<TrainConfigurationViewModel>(tomlContent, null, new TomlModelOptions { IgnoreMissingProperties = true });
 
-           
+
 
             if (tomlTable.TryGetValue("model", out var modelTableObject) && modelTableObject is TomlTable modelTable)
             {
@@ -528,11 +528,16 @@ namespace DiffusionPipeInterface.Utils
                 {
                     var monitoringTable = new TomlTable
                     {
-                        { "log_dir", viewModel.MonitoringConfiguration.LogDir },
                         { "enable_wandb", viewModel.MonitoringConfiguration.EnableWandb },
+                        { "log_dir", viewModel.OutputDir }
                     };
 
-                    if(viewModel.MonitoringConfiguration.WandbRunName != null)
+                    //if (viewModel.MonitoringConfiguration.LogDir != null)
+                    //{
+                    //    monitoringTable.Add("log_dir", viewModel.MonitoringConfiguration.LogDir);
+                    //}
+
+                    if (viewModel.MonitoringConfiguration.WandbRunName != null)
                     {
                         monitoringTable.Add("wandb_run_name", viewModel.MonitoringConfiguration.WandbRunName);
                     }
@@ -582,7 +587,7 @@ namespace DiffusionPipeInterface.Utils
                     var nestedList = tomlArray
                         .Select(innerArray => ((TomlArray)innerArray)
                             .Select(item => Convert.ToInt32(item))
-                            .ToList()) 
+                            .ToList())
                         .ToList();
                     return JsonSerializer.Serialize(nestedList);
                 }
