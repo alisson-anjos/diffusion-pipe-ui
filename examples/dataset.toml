@@ -30,7 +30,8 @@ num_ar_buckets = 7
 # ar_buckets = [1.0, 1.5]
 
 # For video training, you need to configure frame buckets (similar to aspect ratio buckets). There will always
-# be a frame bucket of 1 for images. Videos will be assigned to the first frame bucket that the video is greater than or equal to in length.
+# be a frame bucket of 1 for images. Videos will be assigned to the longest frame bucket possible, such that the video
+# is still greater than or equal to the frame bucket length.
 # But videos are never assigned to the image frame bucket (1); if the video is very short it would just be dropped.
 frame_buckets = [1, 33]
 # If you have >24GB VRAM, or multiple GPUs and use pipeline parallelism, or lower the spatial resolution, you could maybe train with longer frame buckets
@@ -52,7 +53,7 @@ path = '/home/anon/data/images/grayscale'
 
 # How many repeats for 1 epoch. The dataset will act like it is duplicated this many times.
 # The semantics of this are the same as sd-scripts: num_repeats=1 means one epoch is a single pass over all examples (no duplication).
-num_repeats = 10
+num_repeats = 1
 
 # Example of overriding some settings, and using ar_buckets to directly specify ARs.
 # ar_buckets = [[448, 576]]

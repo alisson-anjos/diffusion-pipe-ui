@@ -29,3 +29,4 @@ ftfy
 gradio
 wandb
 #sageattention==1.0.6
+pytorch-optimizer

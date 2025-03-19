@@ -13,6 +13,8 @@ from deepspeed.runtime.pipe.schedule import (
     SendGrad, RecvActivation, SendActivation, RecvGrad, LoadMicroBatch, ForwardPass, BackwardPass,
     ReduceTiedGrads, ReduceGrads, OptimizerStep,
 )
+from deepspeed import comm as dist
+from deepspeed.utils import groups
 
 import hyvideo.text_encoder
 from hyvideo.constants import PRECISION_TO_TYPE, TEXT_ENCODER_PATH
@@ -147,6 +149,18 @@ def train_schedule_steps(self):
         yield cmds
 
 
+def broadcast_model(self):
+    for n, p in self.module.named_parameters():
+        if torch.is_tensor(p) and p.requires_grad:
+            orig_device = p.device
+            move_to_gpu = (orig_device != self.device)
+            if move_to_gpu:
+                p.data = p.data.to(self.device)
+            dist.broadcast(p.data, groups._get_broadcast_src_rank(), group=self.seq_data_parallel_group)
+            if move_to_gpu:
+                p.data = p.data.to(orig_device)
+
+
 def apply_patches():
     # Prevent PEFT from downcasting LoRA weights to fp8 only for this script to upcast them again.
     # TODO: probably should send a PR to PEFT. Default behavior looks like a mistake to me.
@@ -159,3 +173,10 @@ def apply_patches():
     # from the first stage to the last stage. InferenceSchedule already has the commands in the right order
     # and doesn't need this.
     deepspeed.runtime.pipe.schedule.TrainSchedule.steps = train_schedule_steps
+
+    # This does two things:
+    # 1. For block swapping, some parameters will be on CPU when the DeepSpeedEngine is constructed. So we patch this to
+    #    first move those parameters to GPU, then back again when broadcasting the model weights from rank 0.
+    # 2. We skip broadcasting for parameters that don't require grad. These weights are static and always the same because
+    #    they were loaded from disk, so we can safely skip broadcasting and it's faster.
+    deepspeed.runtime.engine.DeepSpeedEngine._broadcast_model = broadcast_model

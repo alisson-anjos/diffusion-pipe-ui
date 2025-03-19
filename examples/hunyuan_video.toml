@@ -18,11 +18,17 @@ micro_batch_size_per_gpu = 1
 pipeline_stages = 1
 # Number of micro-batches sent through the pipeline for each training step.
 # If pipeline_stages > 1, a higher GAS means better GPU utilization due to smaller pipeline bubbles (where GPUs aren't overlapping computation).
-gradient_accumulation_steps = 4
+gradient_accumulation_steps = 1
 # Grad norm clipping.
 gradient_clipping = 1.0
 # Learning rate warmup.
 warmup_steps = 100
+
+# Block swapping is supported for Wan, HunyuanVideo, Flux, and Chroma. This value controls the number
+# of blocks kept offloaded to RAM. Increasing it lowers VRAM use, but has a performance penalty. The
+# exactly performance penalty depends on the model and the type of training you are doing (e.g. images vs video).
+# Block swapping only works for LoRA training, and requires pipeline_stages=1.
+#blocks_to_swap = 20
 
 # eval settings
 
@@ -57,12 +63,14 @@ steps_per_print = 1
 # single_beginning: one clip starting at the beginning of the video
 # single_middle: one clip from the middle of the video (cutting off the start and end equally)
 # multiple_overlapping: extract the minimum number of clips to cover the full range of the video. They might overlap some.
-# default is single_middle
-video_clip_mode = 'single_middle'
+# default is single_beginning
+video_clip_mode = 'single_beginning'
 
+# This is how you configure HunyuanVideo. Other models will be different. See docs/supported_models.md for
+# details on the configuration and options for each model.
 [model]
 type = 'hunyuan-video'
-# Can load Hunyuan Video entirely from the ckpt path set up for the official inference scripts.
+# Can load HunyuanVideo entirely from the ckpt path set up for the official inference scripts.
 #ckpt_path = '/home/anon/HunyuanVideo/ckpts'
 # Or you can load it by pointing to all the ComfyUI files.
 transformer_path = '/data2/imagegen_models/hunyuan_video_comfyui/hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors'
@@ -95,3 +103,18 @@ lr = 2e-5
 betas = [0.9, 0.99]
 weight_decay = 0.01
 eps = 1e-8
+
+# Can use this optimizer for a bit less memory usage.
+# [optimizer]
+# type = 'AdamW8bitKahan'
+# lr = 2e-5
+# betas = [0.9, 0.99]
+# weight_decay = 0.01
+# stabilize = false
+
+# Any optimizer not explicitly supported will be dynamically loaded from the pytorch-optimizer library.
+# [optimizer]
+# type = 'Prodigy'
+# lr = 1
+# betas = [0.9, 0.99]
+# weight_decay = 0.01

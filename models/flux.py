@@ -13,6 +13,7 @@ from safetensors.torch import save_file
 
 from models.base import BasePipeline, make_contiguous
 from utils.common import AUTOCAST_DTYPE, is_main_process
+from utils.offloading import ModelOffloader
 
 NUM_DOUBLE_BLOCKS = 19
 NUM_SINGLE_BLOCKS = 38
@@ -153,6 +154,9 @@ class FluxPipeline(BasePipeline):
     def __init__(self, config):
         self.config = config
         self.model_config = self.config['model']
+        self.offloader_double = None
+        self.offloader_single = None
+
         dtype = self.model_config['dtype']
         transformer_dtype = self.model_config.get('transformer_dtype', dtype)
 
@@ -326,13 +330,46 @@ class FluxPipeline(BasePipeline):
     def to_layers(self):
         transformer = self.transformer
         layers = [EmbeddingWrapper(transformer.x_embedder, transformer.time_text_embed, transformer.context_embedder, transformer.pos_embed)]
-        for block in transformer.transformer_blocks:
-            layers.append(TransformerWrapper(block))
+        for i, block in enumerate(transformer.transformer_blocks):
+            layers.append(TransformerWrapper(block, i, self.offloader_double))
         layers.append(concatenate_hidden_states)
-        for block in transformer.single_transformer_blocks:
-            layers.append(SingleTransformerWrapper(block))
+        for i, block in enumerate(transformer.single_transformer_blocks):
+            layers.append(SingleTransformerWrapper(block, i, self.offloader_single))
         layers.append(OutputWrapper(transformer.norm_out, transformer.proj_out))
         return layers
+
+    def enable_block_swap(self, blocks_to_swap):
+        transformer = self.transformer
+        double_blocks = transformer.transformer_blocks
+        single_blocks = transformer.single_transformer_blocks
+        num_double_blocks = len(double_blocks)
+        num_single_blocks = len(single_blocks)
+        double_blocks_to_swap = blocks_to_swap // 2
+        # This swaps more than blocks_to_swap total blocks. A bit odd, but the model does have twice as many
+        # single blocks as double. I'm just replicating the behavior of Musubi Tuner.
+        single_blocks_to_swap = (blocks_to_swap - double_blocks_to_swap) * 2 + 1
+
+        assert double_blocks_to_swap <= num_double_blocks - 2 and single_blocks_to_swap <= num_single_blocks - 2, (
+            f'Cannot swap more than {num_double_blocks - 2} double blocks and {num_single_blocks - 2} single blocks. '
+            f'Requested {double_blocks_to_swap} double blocks and {single_blocks_to_swap} single blocks.'
+        )
+
+        self.offloader_double = ModelOffloader(
+            'DoubleBlock', double_blocks, num_double_blocks, double_blocks_to_swap, True, torch.device('cuda')
+        )
+        self.offloader_single = ModelOffloader(
+            'SingleBlock', single_blocks, num_single_blocks, single_blocks_to_swap, True, torch.device('cuda')
+        )
+        transformer.transformer_blocks = None
+        transformer.single_transformer_blocks = None
+        transformer.to('cuda')
+        transformer.transformer_blocks = double_blocks
+        transformer.single_transformer_blocks = single_blocks
+        self.offloader_double.prepare_block_devices_before_forward(double_blocks)
+        self.offloader_single.prepare_block_devices_before_forward(single_blocks)
+        print(
+            f'Block swap enabled. Swapping {blocks_to_swap} blocks, double blocks: {double_blocks_to_swap}, single blocks: {single_blocks_to_swap}.'
+        )
 
 
 class EmbeddingWrapper(nn.Module):
@@ -370,19 +407,29 @@ class EmbeddingWrapper(nn.Module):
 
 
 class TransformerWrapper(nn.Module):
-    def __init__(self, block):
+    def __init__(self, block, block_idx, offloader):
         super().__init__()
         self.block = block
+        self.block_idx = block_idx
+        self.offloader = offloader
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
         hidden_states, encoder_hidden_states, temb, freqs_cos, freqs_sin = inputs
+
+        if self.offloader is not None:
+            self.offloader.wait_for_block(self.block_idx)
+
         encoder_hidden_states, hidden_states = self.block(
             hidden_states=hidden_states,
             encoder_hidden_states=encoder_hidden_states,
             temb=temb,
             image_rotary_emb=(freqs_cos, freqs_sin),
         )
+
+        if self.offloader is not None:
+             self.offloader.submit_move_blocks_forward(self.block_idx)
+
         return make_contiguous(hidden_states, encoder_hidden_states, temb, freqs_cos, freqs_sin)
 
 
@@ -393,18 +440,28 @@ def concatenate_hidden_states(inputs):
 
 
 class SingleTransformerWrapper(nn.Module):
-    def __init__(self, block):
+    def __init__(self, block, block_idx, offloader):
         super().__init__()
         self.block = block
+        self.block_idx = block_idx
+        self.offloader = offloader
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
         hidden_states, encoder_hidden_states, temb, freqs_cos, freqs_sin = inputs
+
+        if self.offloader is not None:
+            self.offloader.wait_for_block(self.block_idx)
+
         hidden_states = self.block(
             hidden_states=hidden_states,
             temb=temb,
             image_rotary_emb=(freqs_cos, freqs_sin),
         )
+
+        if self.offloader is not None:
+             self.offloader.submit_move_blocks_forward(self.block_idx)
+
         return make_contiguous(hidden_states, encoder_hidden_states, temb, freqs_cos, freqs_sin)
 
 

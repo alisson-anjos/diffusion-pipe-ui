@@ -60,7 +60,7 @@ def convert_crop_and_resize(pil_img, width_and_height):
 class PreprocessMediaFile:
     def __init__(self, config, support_video=False, framerate=None, round_height=1, round_width=1, round_frames=1):
         self.config = config
-        self.video_clip_mode = config.get('video_clip_mode', 'single_middle')
+        self.video_clip_mode = config.get('video_clip_mode', 'single_beginning')
         print(f'using video_clip_mode={self.video_clip_mode}')
         self.pil_to_tensor = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.5], [0.5])])
         self.support_video = support_video
@@ -242,3 +242,6 @@ class BasePipeline:
                 loss = loss.mean()
             return loss
         return loss_fn
+
+    def enable_block_swap(self, blocks_to_swap):
+        raise NotImplementedError('Block swapping is not implemented for this model')

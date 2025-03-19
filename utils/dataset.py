@@ -4,6 +4,7 @@ import random
 from collections import defaultdict
 import math
 import os
+import hashlib
 
 import numpy as np
 import torch
@@ -315,9 +316,10 @@ class DirectoryDataset:
         assert len(image_files) > 0, f'Directory {self.path} had no images/videos!'
 
         metadata_dataset = datasets.Dataset.from_dict({'image_file': image_files, 'caption_file': caption_files, 'mask_file': mask_files})
-        # Shuffle the data. Use a fixed seed, so the dataset is identical on all processes.
-        # Processes other than rank 0 will then load it from cache.
-        metadata_dataset = metadata_dataset.shuffle(seed=0)
+        # Shuffle the data. Use a deterministic seed, so the dataset is identical on all processes.
+        # Seed is based on the hash of the directory path, so that if directories have the same set of images, they are shuffled differently.
+        seed = int(hashlib.md5(str.encode(str(self.path))).hexdigest(), 16) % int(1e9)
+        metadata_dataset = metadata_dataset.shuffle(seed=seed)
         metadata_map_fn = self._metadata_map_fn()
         fingerprint = Hasher.hash([metadata_dataset._fingerprint, metadata_map_fn])
         print('caching metadata')

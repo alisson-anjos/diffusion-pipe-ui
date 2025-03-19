@@ -9,6 +9,7 @@
 |Cosmos          |✅    |❌              |❌                |
 |Lumina Image 2.0|✅    |✅              |❌                |
 |Wan2.1          |✅    |❌              |✅                |
+|Chroma          |✅    |✅              |✅                |
 
 
 ## SDXL
@@ -59,10 +60,14 @@ Flux LoRAs are saved in Diffusers format.
 [model]
 type = 'ltx-video'
 diffusers_path = '/data2/imagegen_models/LTX-Video'
+# Point this to one of the single checkpoint files to load the transformer and VAE from it.
+single_file_path = '/data2/imagegen_models/LTX-Video/ltx-video-2b-v0.9.1.safetensors'
 dtype = 'bfloat16'
 timestep_sample_method = 'logit_normal'
 ```
-LTX-Video LoRAs are saved in Diffusers format.
+You can train the more recent LTX-Video versions by using single_file_path. Note that you will still need to set diffusers_path to the original model folder (it gets the text encoder from here).
+
+LTX-Video LoRAs are saved in ComfyUI format.
 
 ## HunyuanVideo
 ```
@@ -143,8 +148,44 @@ dtype = 'bfloat16'
 timestep_sample_method = 'logit_normal'
 ```
 
-Both t2v and i2v Wan2.1 variants are supported. Set ckpt_path to the original model checkpoint directory, e.g. [Wan2.1-T2V-1.3B](https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B). The 1.3B is tested and confirmed working.
+Both t2v and i2v Wan2.1 variants are supported. Set ckpt_path to the original model checkpoint directory, e.g. [Wan2.1-T2V-1.3B](https://huggingface.co/Wan-AI/Wan2.1-T2V-1.3B).
 
-For i2v training, you **MUST** train on a dataset of only videos. The training script will crash with an error otherwise. The first frame of each video clip is used as the image conditioning, and the model is trained to predict the rest of the video. Please pay attention to the video_clip_mode setting, and understand that if not set it will default to 'single_middle'. This may not be what you want if you are expecting the very first frame of the source video to be the conditioning. Only the 14B model has an i2v variant, and it requires training on videos, so VRAM requirements are high. You will need 48GB even for fairly short frame lengths.
+(Optional) You may skip downloading the transformer and UMT5 text encoder from the original checkpoint, and instead pass in paths to the ComfyUI safetensors files instead.
+
+Download checkpoint but skip the transformer and UMT5:
+```
+huggingface-cli download Wan-AI/Wan2.1-T2V-1.3B --local-dir Wan2.1-T2V-1.3B --exclude "diffusion_pytorch_model*" "*umt5*"
+```
+
+Then use this config:
+```
+[model]
+type = 'wan'
+ckpt_path = '/data2/imagegen_models/Wan2.1-T2V-1.3B'
+transformer_path = '/data2/imagegen_models/wan_comfyui/wan2.1_t2v_1.3B_bf16.safetensors'
+llm_path = '/data2/imagegen_models/wan_comfyui/wrapper/umt5-xxl-enc-bf16.safetensors'
+dtype = 'bfloat16'
+# You can use fp8 for the transformer when training LoRA.
+#transformer_dtype = 'float8'
+timestep_sample_method = 'logit_normal'
+```
+You still need ckpt_path, it's just that it can be missing the transformer files and/or UMT5. The transformer/UMT5 can be loaded from the native ComfyUI repackaged file, or the file for Kijai's wrapper extension. Additionally, you can mix and match components, for example, using the transformer from the ComfyUI repackaged repository alongside the UMT5 safetensors from Kijai's wrapper repository for training or other combinations.
+
+For i2v training, you **MUST** train on a dataset of only videos. The training script will crash with an error otherwise. The first frame of each video clip is used as the image conditioning, and the model is trained to predict the rest of the video. Please pay attention to the video_clip_mode setting. It defaults to 'single_beginning' if unset, which is reasonable for i2v training, but if you set it to something else during t2v training it may not be what you want for i2v. Only the 14B model has an i2v variant, and it requires training on videos, so VRAM requirements are high. Use block swapping as needed if you don't have enough VRAM.
 
 Wan2.1 LoRAs are saved in ComfyUI format.
+
+## Chroma
+```
+[model]
+type = 'chroma'
+diffusers_path = '/data2/imagegen_models/FLUX.1-dev'
+transformer_path = '/data2/imagegen_models/chroma/chroma-unlocked-v10.safetensors'
+dtype = 'bfloat16'
+# You can optionally load the transformer in fp8 when training LoRAs.
+transformer_dtype = 'float8'
+flux_shift = true
+```
+Chroma is a model that is architecturally modifed and finetuned from Flux Schnell. The modifications are significant enough that it has its own model type. Set transformer_path to the Chroma single model file, and set diffusers_path to either Flux Dev or Schnell Diffusers folder (the Diffusers model is needed for loading the VAE and text encoder).
+
+Chroma LoRAs are saved in ComfyUI format.
