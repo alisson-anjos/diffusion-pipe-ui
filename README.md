@@ -1,8 +1,13 @@
-# Diffusion Pipe Interface – New Blazor Interface
+### Diffusion Pipe Interface
 
 This repository is a fork of [diffusion-pipe](https://github.com/tdrussell/diffusion-pipe) dedicated exclusively to the new web interface developed in .NET/Blazor. It aims to simplify LoRA and other model training, allowing usage in both containerized environments and manual execution.
 
 ---
+
+## Blazor Interface
+
+![preview blazor](preview-blazor.jpeg)
+
 
 ## Cloning the Repository
 
@@ -23,18 +28,21 @@ git submodule update
 
 ## Updates
 
-- **2025-03-19 (new interface with support for all models)**  
-  - New interface developed in Blazor (dotnet).  
-  - Settings (paths, training commands, model downloads, etc.) are defined in the `appsettings.json` file (located at `diffusion-pipe/ui/deploy/appsettings.json`).  
-  - Integrated environment variables for container use, such as:  
-    - `DOWNLOAD_MODELS`: (true/false) – controls whether models are automatically downloaded.  
-    - `MODEL_GROUPS`: list of model groups to be processed (e.g., `"wan,hunyuan"`).  
-    - `WAN_VARIANTS`: if the "wan" group is configured, specifies the variants to download (e.g., `"I2V480P,T2V480P-14B"`).  
+- **2025-03-19 (new interface with support for all models)**
+  - New interface developed in Blazor (dotnet).
+  - Settings (paths, training commands, model downloads, etc.) are defined in the `appsettings.json` file (located at `diffusion-pipe/ui/deploy/appsettings.json`).
+  - Integrated environment variables for container use, such as:
+    - `DOWNLOAD_MODELS`: (true/false) – controls whether models are automatically downloaded.
+    - `MODEL_GROUPS`: list of model groups to be processed (e.g., `"wan,hunyuan"`).
+    - `WAN_VARIANTS`: if the "wan" group is configured, specifies the variants to download (e.g., `"I2V480P,T2V480P-14B"`).
   - Support for parallelism configuration via the **NUM_GPUS** parameter (or the `--num_gpus` flag).
 
-- **2025-01-17 (diffusion-pipe original)**  
-  - Fixes and improvements in training, including adjustments for HunyuanVideo VAE and enhancements in the quality of trained LoRAs.  
- 
+- **2025-01-17 (diffusion-pipe original)**
+  - Fixes and improvements in training, including adjustments for hunyuanvideo VAE and enhancements in the quality of trained LoRAs.
+  - _[Entry kept for historical reference]_
+
+> **Tip:** Add new entries in this section as updates are released.
+
 ---
 
 ## Important Differences in This Fork
@@ -72,7 +80,7 @@ This section defines the paths and commands required for the interface to intera
 
 - **Models**  
   Each model has specific settings, such as paths for checkpoints, diffusers, transformers, VAEs, etc. Placeholders (e.g., `{ModelsPath}`) will be replaced with the value set in **ModelsPath**.  
-  _Example for Hunyuan:_  
+  _Example for hunyuan:_  
   ```json
   "Hunyuan": {
     "CkptPath": "{ModelsPath}/hunyuan/official",
@@ -115,6 +123,40 @@ This section defines the paths and commands required for the interface to intera
 - **GPU (optional)**  
   To use NVIDIA acceleration, install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) (Linux) or configure support as needed on Windows/macOS.
 
+- **.NET 9 (for Manual Execution)**  
+- [How to install](https://dotnet.microsoft.com/en-us/download)
+- For manual execution on Linux, install the .NET 9 runtime. On Ubuntu, you can install it with:
+  ```bash
+  sudo apt update
+  sudo apt install software-properties-common
+  sudo add-apt-repository ppa:dotnet/backports
+  sudo apt update
+  sudo apt install aspnetcore-runtime-9.0
+  ```
+  > If you encounter an error with `add-apt-repository`, ensure that `software-properties-common` is installed.
+
+---
+
+## Supported Model Groups for Automatic Download
+
+When using automatic model downloads in the container, you can specify which model groups to download by setting the `MODEL_GROUPS` environment variable. Supported model groups include:
+
+- **sdxl**
+- **chroma**
+- **cosmos**
+- **flux**
+- **ltx**
+- **lumina**
+- **wan**
+- **hunyuan**
+
+For the **wan** model group, you can further specify which variants to download using the `WAN_VARIANTS` environment variable. Supported WAN variants include:
+
+- **I2V480P**
+- **I2V720P**
+- **T2V480P-1.3B**
+- **T2V480P-14B**
+
 ---
 
 ## Usage Modes
@@ -148,13 +190,13 @@ This repository offers three execution options:
 docker run --gpus all -d -p 8888:8888 -p 6006:6006 -p 5000:5000 -e DOWNLOAD_MODELS=false alissonpereiraanjos/diffusion-pipe-new-ui:latest
 ```
 
-#### 2. With Model Download (e.g., WAN and Hunyuan)
+#### 2. With Model Download (e.g., wan and hunyuan)
 
 ```bash
 docker run --gpus all -d -p 8888:8888 -p 6006:6006 -p 5000:5000 \
   -e DOWNLOAD_MODELS=true \
   -e MODEL_GROUPS="wan,hunyuan" \
-  -e WAN_VARIANTS="I2V480P,T2V480T-14B" \
+  -e WAN_VARIANTS="I2V480P,T2V480P-14B" \
   alissonpereiraanjos/diffusion-pipe-new-ui:latest
 ```
 
@@ -164,7 +206,7 @@ docker run --gpus all -d -p 8888:8888 -p 6006:6006 -p 5000:5000 \
 docker run --gpus all -d -p 8888:8888 -p 6006:6006 -p 5000:5000 \
   -e DOWNLOAD_MODELS=true \
   -e MODEL_GROUPS="wan,hunyuan" \
-  -e WAN_VARIANTS="I2V480P,T2V480T-14B" \
+  -e WAN_VARIANTS="I2V480P,T2V480P-14B" \
   -v /path/on/host/models:/workspace/models \
   -v /path/on/host/outputs:/workspace/outputs \
   -v /path/on/host/datasets:/workspace/datasets \
@@ -196,12 +238,18 @@ If you choose to run the interface manually:
    - Adjust the paths for datasets, configs, outputs, and models according to your system’s structure.  
    - **Note:** In this mode, automatic model downloading will not occur; you must download the models manually and place them in the specified directories.
 
-3. **Start the Interface:**  
+3. **Install .NET 9:**  
+   For manual execution on Linux, install the .NET 9 runtime as described in the prerequisites.
+
+4. **Start the Interface:**  
    - To run the precompiled version of the interface, navigate to the `ui/deploy` folder and execute:
      ```bash
      dotnet ui/deploy/DiffusionPipeInterface.dll --urls=http://0.0.0.0:5000
      ```
    - For further customization of the interface, use the Visual Studio project located in `diffusion-pipe/ui/project`, as the version in `ui/deploy` is precompiled.
+
+> **Preview of the Interface:**  
+> When running, you will see a modern web UI with options for configuring training parameters, monitoring progress (with WandB integration if enabled), and viewing training metrics via Tensorboard.
 
 ---
 
@@ -236,7 +284,7 @@ To run the script, simply execute:
   - Adapter saving that uses the dataset name (plus epoch) instead of a fixed filename  
   - Tensorboard for visualizing training metrics  
   - Jupyter Lab for file management
-  - Restoring training data and logs if the page is updated during training (partially)
+  - Restoring training data and logs if the page is updated during training (partial)
 
 - **Improvements for the Future:**  
   - Generating sample outputs between epochs to visualize the impact of LoRA modifications
