@@ -109,12 +109,22 @@ if [ "$DOWNLOAD_MODELS" = "true" ]; then
                     else
                         echo "  Skipping hunyuan_video_vae_bf16.safetensors; already exists."
                     fi
+                    if [ ! -d "${MODELS_DIR}/hunyuan/llava-llama-3-8b-text-encoder-tokenizer" ]; then
+                        huggingface-cli download Kijai/llava-llama-3-8b-text-encoder-tokenizer --local-dir "${MODELS_DIR}/hunyuan/llava-llama-3-8b-text-encoder-tokenizer"
+                    else
+                        echo "Skipping the model llava-llama-3-8b-text-encoder-tokenizer download because it already exists."
+                    fi
+                    if [ ! -d "${MODELS_DIR}/hunyuan/clip-vit-large-patch14" ]; then
+                        huggingface-cli download openai/clip-vit-large-patch14 --local-dir "${MODELS_DIR}/hunyuan/clip-vit-large-patch14"
+                    else
+                        echo "Skipping the model clip-vit-large-patch14 download because it already exists."
+                    fi
                     ;;
                 "flux")
                     # Download FLUX diffusers model
                     if [ ! -d "${MODELS_DIR}/flux/diffusers" ]; then
                         huggingface-cli download black-forest-labs/FLUX.1-dev --local-dir "${MODELS_DIR}/flux/diffusers"
-                    else
+                    elseS
                         echo "  Skipping FLUX.1-dev diffusers; already exists."
                     fi
                     # Download FLUX transformer model override
