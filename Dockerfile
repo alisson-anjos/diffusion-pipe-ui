@@ -1,4 +1,4 @@
-ARG CUDA_VERSION="12.6.0"
+ARG CUDA_VERSION="12.4.1"
 ARG CUDNN_VERSION=""
 ARG UBUNTU_VERSION="22.04"
 ARG DOCKER_FROM=nvidia/cuda:$CUDA_VERSION-cudnn$CUDNN_VERSION-devel-ubuntu$UBUNTU_VERSION
@@ -48,7 +48,7 @@ RUN apt-get update -y && \
     
 RUN add-apt-repository ppa:ubuntu-toolchain-r/test && apt-get update && apt-get install libstdc++6 -y
 
-ENV LD_LIBRARY_PATH=/usr/local/cuda-12.6/lib64:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH=/usr/local/cuda-12.4.1/lib64:$LD_LIBRARY_PATH
 
 RUN apt-get update && apt-get install -y git-lfs && git lfs install && apt-get install -y nginx
 

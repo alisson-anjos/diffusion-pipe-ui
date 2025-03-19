@@ -209,9 +209,9 @@ case "$UI_TYPE" in
         ;;
     "blazor")
         echo "Starting Blazor UI..."
-        cd /ui/deploy
+        cd $REPO_DIR/ui/deploy
         dotnet DiffusionPipeInterface.dll --urls http://0.0.0.0:5000 &
-        cd /workspace/diffusion-pipe
+        cd $REPO_DIR
         ;;
     *)
         echo "Unknown UI_TYPE: $UI_TYPE. No UI will be started."
