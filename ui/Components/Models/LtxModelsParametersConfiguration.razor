@@ -1,0 +1,68 @@
+﻿@using DiffusionPipeInterface.Models
+@using DiffusionPipeInterface.Models.Models
+@using DiffusionPipeInterface.Models.ViewModels
+@using DiffusionPipeInterface.Utils
+@using DiffusionPipeInterface.ViewModels.Models
+@using Enums
+@inject IConfiguration Configuration
+@inject AppSettingsConfiguration AppSettingsConfiguration
+@inject IDialogService DialogService
+@inject IJSRuntime JSRuntime
+
+<MudTextField @bind-Value="ModelConfiguration.DiffusersPath" Required Label="Diffusers Path" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Link" OnAdornmentClick=@(() => RedirectToLink("https://huggingface.co/Lightricks/LTX-Video/tree/main"))></MudTextField>
+
+<MudTextField @bind-Value="ModelConfiguration.SingleFilePath" Label="Single File Path" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.SingleFilePath))></MudTextField>
+
+<MudSelect T="Dtype" @bind-Value="ModelConfiguration.Dtype" Required Label="Dtype" FullWidth="true" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.ModelDtype))>
+    @foreach (Dtype item in Enum.GetValues(typeof(Dtype)))
+    {
+        <MudSelectItem Value="@item">@item</MudSelectItem>
+    }
+</MudSelect>
+
+<MudSelect T="SampleMethod?" @bind-Value="ModelConfiguration.TimestepSampleMethod" Required Label="Timestep Sample Method" FullWidth="true" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.TimestepSampleMethod))>
+    @foreach (SampleMethod? item in Enum.GetValues(typeof(SampleMethod)))
+    {
+        <MudSelectItem Value="@item">@item</MudSelectItem>
+    }
+</MudSelect>
+
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public LtxModelConfigurationViewModel ModelConfiguration { get; set; } = null!;
+    [Parameter]
+    public bool Locked { get; set; } = false;
+
+
+    protected override void OnInitialized()
+    {
+        if (Configuration != null && AppSettingsConfiguration != null)
+        {
+            var defaultConfig = Configuration.GetSection("Configurations:Models:LTX");
+            if (defaultConfig != null)
+            {
+                ModelConfiguration.DiffusersPath = defaultConfig["DiffusersPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+                ModelConfiguration.SingleFilePath = defaultConfig["SingleFilePath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+            }
+        }
+    }
+
+    private Task OpenDialogAsync(string message)
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large };
+
+        var parameters = new DialogParameters<InfoDialog>
+        {
+            { x => x.Message, message }
+        };
+
+        return DialogService.ShowAsync<InfoDialog>("Info", parameters, options);
+    }
+
+    private void RedirectToLink(string link)
+    {
+        JSRuntime.InvokeVoidAsync("openNewTab", link);
+    }
+}

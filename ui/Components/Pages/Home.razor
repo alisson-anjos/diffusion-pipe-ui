@@ -1,0 +1,320 @@
+﻿@page "/"
+@using DiffusionPipeInterface.Database
+@using DiffusionPipeInterface.Enums
+@using DiffusionPipeInterface.Models
+@using DiffusionPipeInterface.Models.Models
+@using DiffusionPipeInterface.Models.Process
+@using DiffusionPipeInterface.Models.ViewModels
+@using DiffusionPipeInterface.Services
+@using DiffusionPipeInterface.ViewModels
+@using DiffusionPipeInterface.ViewModels.Models
+@using Microsoft.EntityFrameworkCore
+@using Tomlyn
+@using Tomlyn.Model
+@using Utils
+@inject IDbContextFactory<AppDbContext> dbContextFactory;
+@inject ISnackbar Snackbar
+@inject AppSettingsConfiguration Configuration
+@inject ProcessManager ProcessManager
+@inject IJSRuntime JSRuntime
+@inject FolderMonitorService FolderMonitorService
+@inject InterfaceControlViewModel InterfaceControl
+@implements IDisposable
+
+<MudContainer Fixed="true">
+    <MudGrid Spacing="10">
+        <MudItem xs="12">
+            <DatasetDirectoryConfiguration @ref="datasetDirectoryConfigurationRef" TrainConfiguration="TrainConfiguration" ConfigsChanged="HandleUpdateConfigs"></DatasetDirectoryConfiguration>
+        </MudItem>
+        <MudItem xs="12">
+            <MudForm @ref="trainingForm">
+                <MudGrid Spacing="10">
+                    <MudItem xs="12">
+                        <ModelsParametersConfiguration Locked="InterfaceControl.TrainingLocked" TrainConfiguration="TrainConfiguration"></ModelsParametersConfiguration>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <TrainingParametersConfiguration Locked="InterfaceControl.TrainingLocked" TrainConfiguration="TrainConfiguration"></TrainingParametersConfiguration>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <OptimizerParametersConfiguration Locked="InterfaceControl.TrainingLocked" TrainConfiguration="TrainConfiguration"></OptimizerParametersConfiguration>
+                    </MudItem>
+                    <MudItem xs="12">
+                        <AdapterParametersConfiguration Locked="InterfaceControl.TrainingLocked" TrainConfiguration="TrainConfiguration"></AdapterParametersConfiguration>
+                    </MudItem>
+                    @if (Configuration.UsingDiffusionPipeFromFork)
+                    {
+                        <MudItem xs="12">
+                            <MonitoringParametersConfiguration Locked="InterfaceControl.TrainingLocked" TrainConfiguration="TrainConfiguration"></MonitoringParametersConfiguration>
+                        </MudItem>
+                    }
+                    <MudItem xs="12">
+                        <MudCard>
+                            <MudCardHeader>
+                                <CardHeaderContent>
+                                    <MudText Typo="Typo.h6">Controls</MudText>
+                                </CardHeaderContent>
+                            </MudCardHeader>
+                            <MudCardContent>
+                                <MudGrid>
+                                    <MudItem xs="6">
+                                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Disabled="isTraining" FullWidth="true" OnClick="StartTrainingAsync">Start Training</MudButton>
+                                    </MudItem>
+                                    <MudItem xs="6">
+                                        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Disabled="!isTraining" FullWidth="true" OnClick="StopTrainingAsync">Stop Training</MudButton>
+                                    </MudItem>
+                                    <MudItem xs="6">
+                                        <MudButton Variant="Variant.Outlined" Color="Color.Default" Disabled="!isTraining" FullWidth="true" OnClick="ForceSaveCheckpoint">Force Save Checkpoint</MudButton>
+                                    </MudItem>
+                                    <MudItem xs="12">
+                                        <MudProgressLinear Color="Color.Tertiary" Size="Size.Large" Value="@InterfaceControl.ProgressValueTrain" />
+                                    </MudItem>
+
+                                </MudGrid>
+                            </MudCardContent>
+                        </MudCard>
+
+                        <FileTreeView @ref=outputTreeViewRef Title="Output Directory" DirectoryPath="@Path.Combine(Configuration.OutputsPath!, datasetDirectoryConfigurationRef.DatasetsConfigurations.Name)"></FileTreeView>
+                        @* <AlarmComponent/> *@
+                    </MudItem>
+                </MudGrid>
+            </MudForm>
+        </MudItem>
+        <MudItem xs="12">
+            <MudTextField T="string" @ref=logOutputRef @bind-Value="outputText" Label="Output Logs" Typo="Typo.body2" ReadOnly="true" Variant="Variant.Outlined" Lines="50" MaxLines="Int32.MaxValue" />
+        </MudItem>
+    </MudGrid>
+</MudContainer>
+
+
+@code {
+    #nullable enable
+    private bool isUploading = false;
+    private string outputText { get; set; } = string.Empty;
+    private bool isTraining { get; set; } = false;
+    private Guid? processId;
+    private bool isInitialized = false;
+    private MudTextField<string> logOutputRef;
+    private Components.DatasetDirectoryConfiguration datasetDirectoryConfigurationRef = null!;
+    private FileTreeView outputTreeViewRef = null!;
+
+    // private MudSelect<ModelType> modelTypeInputRef;
+
+    private ModelType modelType = ModelType.SDXL;
+
+
+    private string _folderPath;
+    private List<string> _files = new List<string>();
+
+    public TrainConfigurationViewModel TrainConfiguration { get; set; } = new();
+
+    private MudForm trainingForm = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        FolderMonitorService.OnNewSubfolderCreated += HandleNewFile;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            processId = await GetProcessIdFromLocalStorageAsync();
+            if (processId.HasValue)
+            {
+                await CheckProcessStatusAsync();
+            }
+
+            ProcessManager.LogReceived += OnLogReceived;
+            ProcessManager.ProcessCompleted += OnProcessCompleted;
+
+            isInitialized = true;
+        }
+    }
+
+    private void OnLogReceived(object sender, ProcessLogEventArgs e)
+    {
+        if (e.ProcessId == processId)
+        {
+            if (Configuration.UsingDiffusionPipeFromFork)
+            {
+                if (e.Log.Contains("Total steps:"))
+                {
+                    int.TryParse(e.Log.Split("Total steps:")[1].Trim(), out var totalSteps);
+                    InterfaceControl.TotalSteps = totalSteps;
+                }
+
+                if (e.Log.Contains("Steps per epoch:"))
+                {
+                    int.TryParse(e.Log.Split("Steps per epoch:")[1].Trim(), out var stepsPerEpoch);
+                    InterfaceControl.StepsPerEpoch = stepsPerEpoch;
+                }
+            }
+
+            if (e.Log.Contains("step="))
+            {
+                int.TryParse(e.Log.Split("step=")[1].Split(",")[0].Trim(), out var currentStep);
+                InterfaceControl.CurrentStep = currentStep;
+            }
+
+            if (e.Log.Contains("Started new epoch:"))
+            {
+                int.TryParse(e.Log.Split("Started new epoch:")[1].Trim(), out var currentEpoch);
+                InterfaceControl.CurrentEpoch = currentEpoch;
+            }
+
+            InterfaceControl.ProgressValueTrain = TrainConfiguration.Epochs == 0 ? 0 : (InterfaceControl.CurrentEpoch / TrainConfiguration.Epochs) * 100;
+
+            outputText += $"{e.Log}\n";
+
+            InvokeAsync(StateHasChanged);
+        }
+
+        JSRuntime.InvokeVoidAsync("scrollToBottom", logOutputRef?.InputReference?.ElementReference);
+    }
+
+    private void OnProcessCompleted(object sender, Guid completedProcessId)
+    {
+        if (completedProcessId == processId)
+        {
+            isTraining = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task CheckProcessStatusAsync()
+    {
+        if (processId.HasValue)
+        {
+            var processInfo = ProcessManager.GetProcessInfo(processId.Value);
+
+            if (processInfo != null)
+            {
+                outputText = string.Join("\n", processInfo.Logs);
+
+                if (!processInfo.IsRunning)
+                {
+                    await ClearProcessIdFromLocalStorageAsync();
+                    processId = null;
+                }
+                else
+                {
+                    isTraining = true;
+                }
+            }
+            else
+            {
+                await ClearProcessIdFromLocalStorageAsync();
+                processId = null;
+            }
+        }
+    }
+
+    private async Task<Guid?> GetProcessIdFromLocalStorageAsync()
+    {
+        var processIdString = await JSRuntime.InvokeAsync<string>("localStorage.getItem", "processId");
+        if (Guid.TryParse(processIdString, out var processId))
+        {
+            return processId;
+        }
+        return null;
+    }
+
+    private async Task SaveProcessIdToLocalStorageAsync(Guid processId)
+    {
+        await JSRuntime.InvokeVoidAsync("localStorage.setItem", "processId", processId.ToString());
+    }
+
+    private async Task ClearProcessIdFromLocalStorageAsync()
+    {
+        await JSRuntime.InvokeVoidAsync("localStorage.removeItem", "processId");
+    }
+
+    private async Task StartTrainingAsync()
+    {
+        await trainingForm.Validate();
+
+
+        if (trainingForm.IsValid)
+        {
+
+            try
+            {
+                var trainToml = TrainConfiguration.GenerateToml();
+
+                var trainPath = Path.Combine(Configuration.ConfigsPath!, datasetDirectoryConfigurationRef.DatasetsConfigurations.Name, "config.toml");
+
+                FileHelper.SaveToml(trainToml, trainPath);
+
+                isTraining = true;
+                outputText = "Starting training...\n";
+
+                var command = Configuration.StartTrainingCommand;
+                command = command.Replace("{EnvPath}", Configuration.EnvPath)
+                            .Replace("{DiffusionPipePath}", Configuration.DiffusionPipePath)
+                            .Replace("{TrainConfig}", trainPath);
+
+                if (!Directory.Exists(TrainConfiguration.OutputDir))
+                {
+                    Directory.CreateDirectory(TrainConfiguration.OutputDir);
+                }
+
+                FolderMonitorService.SetFolderPath(TrainConfiguration.OutputDir);
+
+                processId = ProcessManager.StartProcess(command, Configuration.DiffusionPipePath);
+
+                await SaveProcessIdToLocalStorageAsync(processId.Value);
+
+                await CheckProcessStatusAsync();
+            }
+            catch (Exception ex)
+            {
+                outputText += $"Error: {ex.Message}\n";
+            }
+        }
+    }
+
+    private async Task StopTrainingAsync()
+    {
+        if (processId.HasValue)
+        {
+            var processInfo = ProcessManager.GetProcessInfo(processId.Value);
+            if (processInfo != null && processInfo.IsRunning)
+            {
+                ProcessManager.StopProcess(processId.Value);
+                await ClearProcessIdFromLocalStorageAsync();
+                processId = null;
+                outputText += "Training interrupted.\n";
+                isTraining = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private void ForceSaveCheckpoint()
+    {
+        FileHelper.ForceSaveCheckpoint(TrainConfiguration.OutputDir);
+    }
+
+    private void HandleNewFile(string filePath)
+    {
+        _files.Add(filePath);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string GetDownloadLink(string filePath)
+    {
+        return $"/download?file={Uri.EscapeDataString(filePath)}";
+    }
+
+    private async Task HandleUpdateConfigs(TrainConfigurationViewModel trainConfig)
+    {
+        TrainConfiguration = trainConfig;
+        await InvokeAsync(StateHasChanged);
+    }
+   
+    public void Dispose()
+    {
+        ProcessManager.LogReceived -= OnLogReceived;
+        FolderMonitorService.OnNewSubfolderCreated -= HandleNewFile;
+    }
+}

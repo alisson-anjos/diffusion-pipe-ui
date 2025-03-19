@@ -1,0 +1,109 @@
+﻿@using MudBlazor
+@inject IJSRuntime JSRuntime
+
+
+<MudCard Outlined="true" Elevation="3" Class="my-2">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudText Typo="Typo.h6">Alarm Settings</MudText>
+        </CardHeaderContent>
+    </MudCardHeader>
+    <MudCardContent>
+        <MudSelect T="string" @bind-Value="SelectedSound" Label="Select Alarm Sound" Class="mb-2">
+            @foreach (var sound in AlarmSounds)
+            {
+                <MudSelectItem Value="@sound.Value">@sound.Name</MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudSwitch @bind-value="AlarmEnabled" Color="Color.Primary" Label="Enable Alarm" Class="mb-2" />
+
+        <MudRadioGroup T="AlarmTriggerOption" @bind-SelectedOption="SelectedTriggerOption" Label="Trigger Mode" Class="mb-2">
+            <MudRadio Value="AlarmTriggerOption.TrainingFinished" Label="When Training Finishes" />
+            <MudRadio Value="AlarmTriggerOption.Epoch" Label="By Epoch" />
+            <MudRadio Value="AlarmTriggerOption.Step" Label="By Step" />
+        </MudRadioGroup>
+
+        @if (SelectedTriggerOption == AlarmTriggerOption.Epoch)
+        {
+            <MudNumericField T="int" @bind-Value="EpochNumber" Label="Epoch Number" Class="mb-2" />
+        }
+        else if (SelectedTriggerOption == AlarmTriggerOption.Step)
+        {
+            <MudNumericField T="int" @bind-Value="StepNumber" Label="Step Number" Class="mb-2" />
+        }
+    </MudCardContent>
+    <MudCardActions>
+        <MudButton OnClick="TestAlarm" Variant="Variant.Outlined" Color="Color.Primary">
+            Test Alarm
+        </MudButton>
+        <MudButton OnClick="StopAlarm" Variant="Variant.Outlined" Color="Color.Secondary">
+            Stop Alarm
+        </MudButton>
+    </MudCardActions>
+</MudCard>
+
+<audio id="alarmAudio"></audio>
+
+@code {
+    public class SoundOption
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Value { get; set; } = string.Empty;
+    }
+    
+    private List<SoundOption> AlarmSounds = new List<SoundOption>
+    {
+        new SoundOption { Name = "Alert Alarm", Value = "alarms/mixkit-alert-alarm-1005.wav" },
+        new SoundOption { Name = "City Alert Siren", Value = "alarms/mixkit-city-alert-siren-loop-1008.wav" },
+        new SoundOption { Name = "Classic Alarm", Value = "alarms/mixkit-classic-alarm-995.wav" },
+        new SoundOption { Name = "Game Notification", Value = "alarms/mixkit-game-notification-wave-alarm-987.wav" },
+        new SoundOption { Name = "Retro Game Emergency Alarm", Value = "alarms/mixkit-retro-game-emergency-alarm-1000.wav" },
+        new SoundOption { Name = "Rooster Crowing in the Morning", Value = "alarms/mixkit-rooster-crowing-in-the-morning-2462.wav" },
+        new SoundOption { Name = "Short Rooster Crowing", Value = "alarms/mixkit-short-rooster-crowing-2470.wav" },
+        new SoundOption { Name = "Sound Alert in Hall", Value = "alarms/mixkit-sound-alert-in-hall-1006.wav" }
+    };
+
+    private string SelectedSound { get; set; } = "alarms/mixkit-alert-alarm-1005.wav";
+
+    private bool AlarmEnabled { get; set; } = false;
+
+    private int EpochNumber { get; set; } = 1;
+    private int StepNumber { get; set; } = 100;
+
+    public enum AlarmTriggerOption
+    {
+        TrainingFinished,
+        Epoch,
+        Step
+    }
+    private AlarmTriggerOption SelectedTriggerOption { get; set; } = AlarmTriggerOption.TrainingFinished;
+
+    /// <summary>
+    /// Plays the selected alarm sound if the alarm is enabled.
+    /// Called when the "Test Alarm" button is clicked.
+    /// </summary>
+    private async Task TestAlarm()
+    {
+        if (AlarmEnabled)
+        {
+            await JSRuntime.InvokeVoidAsync("playAlarm", SelectedSound);
+        }
+    }
+
+    private async Task StopAlarm()
+    {
+        await JSRuntime.InvokeVoidAsync("stopAlarm");
+    }
+
+    /// <summary>
+    /// Public method to trigger the alarm. For example, call this when the training finishes.
+    /// </summary>
+    public async Task TriggerAlarm()
+    {
+        if (AlarmEnabled)
+        {
+            await JSRuntime.InvokeVoidAsync("playAlarm", SelectedSound);
+        }
+    }
+}

@@ -1,0 +1,47 @@
+﻿@inject IDialogService DialogService
+@inject IJSRuntime JSRuntime
+
+<div class="mud-input mud-input-outlined mud-input-outlined-with-label mud-input-adorned-end mud-shrink mud-typography-subtitle1">
+    @FieldContent
+    <div class="mud-input-adornment mud-input-adornment-end">
+        <MudIconButton Icon="@Icons.Material.Filled.Info" aria-label="Info" OnClick="() => OpenDialogAsync(TooltipText)" />
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public RenderFragment FieldContent { get; set; }
+
+    [Parameter]
+    public string TooltipText { get; set; }
+
+    [Parameter]
+    public string Icon { get; set; } = Icons.Material.Filled.Info;
+
+    [Parameter]
+    public int FieldXs { get; set; } = 11;
+
+    [Parameter]
+    public int InfoXs { get; set; } = 1;
+
+    private bool _open = false;
+
+    private void ToggleOpen() => _open = !_open;
+
+    private Task OpenDialogAsync(string message)
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large };
+
+        var parameters = new DialogParameters<InfoDialog>
+        {
+            { x => x.Message, message }
+        };
+
+        return DialogService.ShowAsync<InfoDialog>("Info", parameters, options);
+    }
+
+    private void RedirectToLink(string link)
+    {
+        JSRuntime.InvokeVoidAsync("openNewTab", link);
+    }
+}

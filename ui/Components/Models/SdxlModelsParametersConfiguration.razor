@@ -1,0 +1,75 @@
+﻿@using DiffusionPipeInterface.Models
+@using DiffusionPipeInterface.Models.Models
+@using DiffusionPipeInterface.Models.ViewModels
+@using DiffusionPipeInterface.Utils
+@using DiffusionPipeInterface.ViewModels.Models
+@using Enums
+@inject IConfiguration Configuration
+@inject AppSettingsConfiguration AppSettingsConfiguration
+@inject IDialogService DialogService
+@inject IJSRuntime JSRuntime
+
+<MudTextField @bind-Value="ModelConfiguration.CheckpointPath" Required Label="Checkpoint Path" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Link" OnAdornmentClick=@(() => RedirectToLink("https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0_0.9vae.safetensors"))></MudTextField>
+
+<MudSelect T="Dtype" @bind-Value="ModelConfiguration.Dtype" Required Label="Dtype" FullWidth="true" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.ModelDtype))>
+    @foreach (Dtype item in Enum.GetValues(typeof(Dtype)))
+    {
+        <MudSelectItem Value="@item">@item</MudSelectItem>
+    }
+</MudSelect>
+
+<InfoField TooltipText="@Tooltips.VPred">
+    <FieldContent>
+        <MudSwitch @bind-Value="ModelConfiguration.VPred" Color="Color.Primary" Disabled="Locked" Label="Enable V-prediction" />
+    </FieldContent>
+</InfoField>
+
+<MudNumericField @bind-Value="ModelConfiguration.MinSnrGamma" Label="Min SNR Gamma" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.MinSnrGamma))></MudNumericField>
+
+<InfoField TooltipText="@Tooltips.DebiasedEstimationLoss">
+    <FieldContent>
+        <MudSwitch @bind-Value="ModelConfiguration.DebiasedEstimationLoss" Color="Color.Primary" Disabled="Locked" Label="Enable Debiased Estimation Loss" />
+    </FieldContent>
+</InfoField>
+
+<MudNumericField @bind-Value="ModelConfiguration.UnetLr" Required Label="Unet LR" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.UnetLr))></MudNumericField>
+
+<MudNumericField @bind-Value="ModelConfiguration.TextEncoder1Lr" Required Label="Text Encoder 1 LR" Disabled="Locked" Variant="Variant.Outlined"></MudNumericField>
+<MudNumericField @bind-Value="ModelConfiguration.TextEncoder2Lr" Required Label="Text Encoder 2 LR" Disabled="Locked" Variant="Variant.Outlined"></MudNumericField>
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public SdxlModelConfigurationViewModel ModelConfiguration { get; set; } = null!;
+    [Parameter]
+    public bool Locked { get; set; } = false;
+
+    protected override void OnInitialized()
+    {
+        if (Configuration != null && AppSettingsConfiguration != null)
+        {
+            var defaultConfig = Configuration.GetSection("Configurations:Models:SDXL");
+            if (defaultConfig != null)
+            {
+                ModelConfiguration.CheckpointPath = defaultConfig["CheckpointPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+            }
+        }
+    }
+
+    private Task OpenDialogAsync(string message)
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large };
+
+        var parameters = new DialogParameters<InfoDialog>
+        {
+            { x => x.Message, message }
+        };
+
+        return DialogService.ShowAsync<InfoDialog>("Info", parameters, options);
+    }
+
+    private void RedirectToLink(string link)
+    {
+        JSRuntime.InvokeVoidAsync("openNewTab", link);
+    }
+}

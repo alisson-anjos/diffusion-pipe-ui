@@ -1,0 +1,48 @@
+﻿@using DiffusionPipeInterface.ViewModels
+@using DiffusionPipeInterface.Utils
+@using Enums
+
+<MudCard Outlined="true" Elevation="3" Class="my-2">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudText Typo="Typo.h6">Optimizer Configurations</MudText>
+        </CardHeaderContent>
+        @* <CardHeaderActions>
+            <MudIconButton Icon="@Icons.Material.Outlined.Refresh" Color="Color.Default" />
+        </CardHeaderActions> *@
+    </MudCardHeader>
+    <MudCardContent>
+        <MudGrid>
+            <MudItem xs="3">
+                <MudSelect T="Optimizer" Required @bind-Value="TrainConfiguration.OptimizerConfiguration.Type" Label="Optimizer" FullWidth="true" Disabled="Locked" Variant="Variant.Outlined">
+                    @foreach (Optimizer item in Enum.GetValues(typeof(Optimizer)))
+                    {
+                        <MudSelectItem Value="@item">@item</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="3">
+                <MudNumericField Required @bind-Value="TrainConfiguration.OptimizerConfiguration.Lr" Label="Learning Rate" Disabled="Locked" Variant="Variant.Outlined"></MudNumericField>
+            </MudItem>
+            <MudItem xs="3">
+                <MudTextField @bind-Value="TrainConfiguration.OptimizerConfiguration.BetasJson" Label="Betas" Disabled="Locked" Variant="Variant.Outlined"></MudTextField>
+            </MudItem>
+            <MudItem xs="3">
+                <MudNumericField Required @bind-Value="TrainConfiguration.OptimizerConfiguration.WeightDecay" Label="Weight Decay" Disabled="Locked" Variant="Variant.Outlined"></MudNumericField>
+            </MudItem>
+            <MudItem xs="3">
+                <MudNumericField Required @bind-Value="TrainConfiguration.OptimizerConfiguration.Eps" Label="Eps" Disabled="Locked" Variant="Variant.Outlined"></MudNumericField>
+            </MudItem>
+        </MudGrid>
+
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public TrainConfigurationViewModel TrainConfiguration { get; set; } = null!;
+
+    [Parameter]
+    public bool Locked { get; set; } = false;
+}

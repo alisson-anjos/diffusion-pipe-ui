@@ -1,0 +1,111 @@
+﻿@using DiffusionPipeInterface.ViewModels
+@using DiffusionPipeInterface.Utils
+@using Enums
+@inject IDialogService DialogService
+
+<MudCard Outlined="true" Elevation="3" Class="my-2">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudText Typo="Typo.h6">Training Configurations</MudText>
+        </CardHeaderContent>
+       @*  <CardHeaderActions>
+            <MudIconButton Icon="@Icons.Material.Outlined.Refresh" Color="Color.Default" />
+        </CardHeaderActions> *@
+    </MudCardHeader>
+    <MudCardContent>
+        <MudGrid>
+            <MudItem xs="3">
+                <MudNumericField @bind-Value="TrainConfiguration.Epochs" Min="1" Required Label="Epochs" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.Epochs))></MudNumericField>
+            </MudItem>
+            <MudItem xs="3">
+                <MudNumericField @bind-Value="TrainConfiguration.SaveEveryNEpochs" Required Min="1" Label="Save Every N Epochs" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.SaveEveryNEpochs))></MudNumericField>
+            </MudItem>
+            <MudItem xs="3">
+                <MudNumericField @bind-Value="TrainConfiguration.MicroBatchSizePerGPU" Min="1" Required Label="Batch Size" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.MicroBatchSizePerGpu))></MudNumericField>
+            </MudItem>
+            <MudItem xs="3">
+                <MudNumericField @bind-Value="TrainConfiguration.GradientAccumulationSteps" Min="1" Required Label="Gradient Accumulation Steps" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.GradientAccumulationSteps))></MudNumericField>
+            </MudItem>
+            <MudItem xs="3">
+                <MudSwitch @bind-Value="TrainConfiguration.EvalBeforeFirstSteps" Label="Evaluation Before First Steps" Disabled="Locked" Color="Color.Primary"></MudSwitch>
+            </MudItem>
+            <MudItem xs="3">
+                <MudNumericField @bind-Value="TrainConfiguration.EvalEveryNEpochs" Required Label="Evaluation Every N Epochs" Disabled="Locked" Variant="Variant.Outlined"></MudNumericField>
+            </MudItem>
+            <MudItem xs="3">
+                <MudNumericField @bind-Value="TrainConfiguration.EvalMicroBatchSizePerGPU" Required Label="Evaluation Micro Batch Size Per GPU" Disabled="Locked" Variant="Variant.Outlined"></MudNumericField>
+            </MudItem>
+            <MudItem xs="3">
+                <MudNumericField @bind-Value="TrainConfiguration.EvalGradientAccumulationSteps" Required Label="Evaluation Gradient Accumulation Steps" Disabled="Locked" Variant="Variant.Outlined"></MudNumericField>
+            </MudItem>
+            <MudItem xs="3">
+                <MudNumericField @bind-Value="TrainConfiguration.WarmupSteps" Min="0" Required Label="Warmup Steps" Disabled="Locked" Variant="Variant.Outlined"></MudNumericField>
+            </MudItem>
+            <MudItem xs="3">
+                <MudNumericField @bind-Value="TrainConfiguration.GradientClipping" Min="1" Required Label="Gradient Clipping" Disabled="Locked" Variant="Variant.Outlined"></MudNumericField>
+            </MudItem>
+            <MudItem xs="3">
+                <MudSwitch @bind-Value="TrainConfiguration.ActivationCheckpointing" Label="Activation Checkpointing" Disabled="Locked" Color="Color.Primary"></MudSwitch>
+            </MudItem>
+            <MudItem xs="3">
+                <MudNumericField @bind-Value="TrainConfiguration.CheckpointEveryNMinutes" Required Label="Checkpoint Every N Minutes" Disabled="Locked" Variant="Variant.Outlined"></MudNumericField>
+            </MudItem>
+            <MudItem xs="3">
+                <MudSelect T="PartitionMethod" @bind-Value="TrainConfiguration.PartitionMethod" Required Label="Partition Method" FullWidth="true" Disabled="Locked" Variant="Variant.Outlined">
+                    @foreach (PartitionMethod item in Enum.GetValues(typeof(PartitionMethod)))
+                    {
+                        <MudSelectItem Value="@item">@item</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="3">
+                <MudNumericField @bind-Value="TrainConfiguration.CachingBatchSize" Label="Caching Batch Size" Disabled="Locked" Variant="Variant.Outlined"></MudNumericField>
+            </MudItem>
+            <MudItem xs="3">
+                <MudNumericField @bind-Value="TrainConfiguration.StepsPerPrint" Label="Steps Per Print" Disabled="Locked" Variant="Variant.Outlined"></MudNumericField>
+            </MudItem>
+            <MudItem xs="3">
+                <MudSelect T="VideoClipMode" @bind-Value="TrainConfiguration.VideoClipMode" Required Label="Video Clip Mode" FullWidth="true" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.VideoClipMode))>
+                    @foreach (VideoClipMode item in Enum.GetValues(typeof(VideoClipMode)))
+                    {
+                        <MudSelectItem Value="@item">@item</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="3">
+                <MudNumericField @bind-Value="TrainConfiguration.BlocksToSwap" Label="Blocks To Swap" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.BlocksToSwap))></MudNumericField>
+            </MudItem>
+        </MudGrid>
+
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public TrainConfigurationViewModel TrainConfiguration { get; set; } = null!;
+
+    private Dictionary<string, bool> showInfos = new Dictionary<string, bool>();
+
+    [Parameter]
+    public bool Locked { get; set; } = false;
+
+    protected override void OnInitialized()
+    {
+        showInfos.Add(nameof(TrainConfiguration.Epochs), false);
+
+        base.OnInitialized();
+    }
+
+    private Task OpenDialogAsync(string message)
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large };
+
+        var parameters = new DialogParameters<InfoDialog>
+        {
+            { x => x.Message, message }
+        };
+
+        return DialogService.ShowAsync<InfoDialog>("Info", parameters, options);
+    }
+}

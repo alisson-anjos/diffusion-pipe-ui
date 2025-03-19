@@ -1,0 +1,69 @@
+﻿@using DiffusionPipeInterface.Models
+@using DiffusionPipeInterface.Models.Models
+@using DiffusionPipeInterface.Models.ViewModels
+@using DiffusionPipeInterface.Utils
+@using DiffusionPipeInterface.ViewModels.Models
+@using Enums
+@inject IConfiguration Configuration
+@inject AppSettingsConfiguration AppSettingsConfiguration
+@inject IDialogService DialogService
+@inject IJSRuntime JSRuntime
+
+<MudTextField @bind-Value="ModelConfiguration.TransformerPath" Required Label="Transformers Path" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Link" OnAdornmentClick=@(() => RedirectToLink("https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/tree/main/split_files/diffusion_models"))></MudTextField>
+
+<MudTextField @bind-Value="ModelConfiguration.VaePath" Required Label="VAE Path" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Link" OnAdornmentClick=@(() => RedirectToLink("https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/tree/main/split_files/vae"))></MudTextField>
+
+<MudTextField @bind-Value="ModelConfiguration.LlmPath" Required Label="LLM Path" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Link" OnAdornmentClick=@(() => RedirectToLink("https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/tree/main/split_files/text_encoders"))></MudTextField>
+
+<MudSelect T="Dtype" @bind-Value="ModelConfiguration.Dtype" Required Label="Dtype" FullWidth="true" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.ModelDtype))>
+    @foreach (Dtype item in Enum.GetValues(typeof(Dtype)))
+    {
+        <MudSelectItem Value="@item">@item</MudSelectItem>
+    }
+</MudSelect>
+
+<InfoField TooltipText="@Tooltips.LuminaShift">
+    <FieldContent>
+        <MudSwitch @bind-Value="ModelConfiguration.LuminaShift" Required Color="Color.Primary" Disabled="Locked" Label="Enable Lumina Shift" />
+    </FieldContent>
+</InfoField>
+
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public LuminaModelConfigurationViewModel ModelConfiguration { get; set; } = null!;
+    [Parameter]
+    public bool Locked { get; set; } = false;
+
+    protected override void OnInitialized()
+    {
+        if (Configuration != null && AppSettingsConfiguration != null)
+        {
+            var defaultConfig = Configuration.GetSection("Configurations:Models:Lumina");
+            if (defaultConfig != null)
+            {
+                ModelConfiguration.TransformerPath = defaultConfig["TransformerPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+                ModelConfiguration.VaePath = defaultConfig["VaePath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+                ModelConfiguration.LlmPath = defaultConfig["LlmPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+            }
+        }
+    }
+
+    private Task OpenDialogAsync(string message)
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large };
+
+        var parameters = new DialogParameters<InfoDialog>
+        {
+            { x => x.Message, message }
+        };
+
+        return DialogService.ShowAsync<InfoDialog>("Info", parameters, options);
+    }
+
+    private void RedirectToLink(string link)
+    {
+        JSRuntime.InvokeVoidAsync("openNewTab", link);
+    }
+}

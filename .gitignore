@@ -167,3 +167,6 @@ start.bat
 stop.bat
 
 *.whl
+
+.vs/
+bin/

@@ -1,0 +1,69 @@
+﻿@using DiffusionPipeInterface.Enums
+@using DiffusionPipeInterface.Models.Models
+@using DiffusionPipeInterface.Models.ViewModels
+@using DiffusionPipeInterface.ViewModels
+@using DiffusionPipeInterface.Utils
+@using DiffusionPipeInterface.Components.Models
+@using DiffusionPipeInterface.ViewModels.Models
+
+<MudCard Outlined="true" Elevation="3" Class="my-2">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudText Typo="Typo.h6">Models Configurations</MudText>
+        </CardHeaderContent>
+       @*  <CardHeaderActions>
+            <MudIconButton Icon="@Icons.Material.Outlined.Refresh" Color="Color.Default" />
+        </CardHeaderActions> *@
+    </MudCardHeader>
+    <MudCardContent>
+        <MudGrid>
+
+            <MudItem xs="12">
+                <MudStack>
+                    @switch (TrainConfiguration.ModelConfiguration.Type)
+                    {
+                        case ModelType.Chroma:
+                            <ChromaModelsParametersConfiguration Locked="Locked" ModelConfiguration="TrainConfiguration.ChromaModelConfiguration"></ChromaModelsParametersConfiguration>
+                            break;
+                        case ModelType.Cosmos:
+                            <CosmosModelsParametersConfiguration Locked="Locked" ModelConfiguration="TrainConfiguration.CosmosModelConfiguration"></CosmosModelsParametersConfiguration>
+                            break;
+                        case ModelType.Flux:
+                            <FluxModelsParametersConfiguration Locked="Locked" ModelConfiguration="TrainConfiguration.FluxModelConfiguration"></FluxModelsParametersConfiguration>
+                            break;
+                        case ModelType.Hunyuan:
+                            <HunyuanModelsParametersConfiguration Locked="Locked" ModelConfiguration="TrainConfiguration.HunyuanModelConfiguration"></HunyuanModelsParametersConfiguration>
+                            break;
+                        case ModelType.LTX:
+                            <LtxModelsParametersConfiguration Locked="Locked" ModelConfiguration="TrainConfiguration.LtxModelConfiguration"></LtxModelsParametersConfiguration>
+                            break;
+                        case ModelType.Lumina:
+                            <LuminaModelsParametersConfiguration Locked="Locked" ModelConfiguration="TrainConfiguration.LuminaModelConfiguration"></LuminaModelsParametersConfiguration>
+                            break;
+                        case ModelType.SDXL:
+                            <SdxlModelsParametersConfiguration Locked="Locked" ModelConfiguration="TrainConfiguration.SdxlModelConfiguration"></SdxlModelsParametersConfiguration>
+                            break;
+                        case ModelType.Wan21:
+                            <WanModelsParametersConfiguration Locked="Locked" ModelConfiguration="TrainConfiguration.WanModelConfiguration"></WanModelsParametersConfiguration>
+                            break;
+                    }
+                </MudStack>
+            </MudItem>
+        </MudGrid>
+
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public TrainConfigurationViewModel TrainConfiguration { get; set; } = null!;
+
+    [Parameter]
+    public bool Locked { get; set; } = false;
+
+    public async Task UpdateState()
+    {
+        StateHasChanged();
+    }
+}

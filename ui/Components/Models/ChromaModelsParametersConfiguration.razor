@@ -1,0 +1,68 @@
+﻿@using DiffusionPipeInterface.Models
+@using DiffusionPipeInterface.Utils
+@using DiffusionPipeInterface.ViewModels.Models
+@using Enums
+@inject IDialogService DialogService
+@inject IJSRuntime JSRuntime
+@inject IConfiguration Configuration
+@inject AppSettingsConfiguration AppSettingsConfiguration
+
+<MudTextField @bind-Value="ModelConfiguration.DiffusersPath" Required Label="Diffusers Path" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Link" OnAdornmentClick=@(() => RedirectToLink("https://huggingface.co/lodestones/Chroma/tree/main"))></MudTextField>
+
+<MudSelect T="Dtype" @bind-Value="ModelConfiguration.Dtype" Required Label="Dtype" FullWidth="true" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.ModelDtype))>
+    @foreach (Dtype item in Enum.GetValues(typeof(Dtype)))
+    {
+        <MudSelectItem Value="@item">@item</MudSelectItem>
+    }
+</MudSelect>
+
+<MudTextField @bind-Value="ModelConfiguration.TransformerPath" Required Label="Transformer Path" Disabled="Locked" Variant="Variant.Outlined"></MudTextField>
+
+<MudSelect T="Dtype?" @bind-Value="ModelConfiguration.TransformerDType" Required Label="Transformer Dtype" FullWidth="true" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.TransformerDtype))>
+    @foreach (Dtype? item in Enum.GetValues(typeof(Dtype)))
+    {
+        <MudSelectItem Value="@item">@item</MudSelectItem>
+    }
+</MudSelect>
+
+<MudSwitch @bind-Value="ModelConfiguration.FluxShift" Required Color="Color.Primary" Disabled="Locked" Label="Enable Flux Shift" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Link" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.FluxShift)) />
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public ChromaModelConfigurationViewModel ModelConfiguration { get; set; } = null!;
+
+    [Parameter]
+    public bool Locked { get; set; } = false;
+
+
+    protected override void OnInitialized()
+    {
+        if (Configuration != null && AppSettingsConfiguration != null)
+        {
+            var defaultConfig = Configuration.GetSection("Configurations:Models:Chroma");
+            if (defaultConfig != null)
+            {
+                ModelConfiguration.DiffusersPath = defaultConfig["DiffusersPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+                ModelConfiguration.TransformerPath = defaultConfig["TransformerPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+            }
+        }
+    }
+
+    private Task OpenDialogAsync(string message)
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large };
+
+        var parameters = new DialogParameters<InfoDialog>
+        {
+            { x => x.Message, message }
+        };
+
+        return DialogService.ShowAsync<InfoDialog>("Info", parameters, options);
+    }
+
+    private void RedirectToLink(string link)
+    {
+        JSRuntime.InvokeVoidAsync("openNewTab", link);
+    }
+}

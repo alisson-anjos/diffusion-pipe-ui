@@ -1,0 +1,90 @@
+﻿@using DiffusionPipeInterface.Models
+@using DiffusionPipeInterface.Models.ViewModels
+@using DiffusionPipeInterface.ViewModels.Models
+@using Enums
+@using Utils
+@inject IConfiguration Configuration
+@inject AppSettingsConfiguration AppSettingsConfiguration
+@inject IDialogService DialogService
+@inject IJSRuntime JSRuntime
+
+<MudSwitch T="bool?" @bind-Value="ModelConfiguration.IsOfficialCheckpoint" Color="Color.Primary" Disabled="Locked" Label="Use Official Checkpoints?" />
+
+@if (ModelConfiguration.IsOfficialCheckpoint != null && ModelConfiguration.IsOfficialCheckpoint == true)
+{
+    <MudTextField @bind-Value="ModelConfiguration.CkptPath" Required Label="Official Checkpoint Path" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Link" OnAdornmentClick=@(() => RedirectToLink("https://huggingface.co/tencent/HunyuanVideo/tree/main"))></MudTextField>
+
+    <MudSelect T="Dtype" @bind-Value="ModelConfiguration.Dtype" Label="Dtype" Required FullWidth="true" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.ModelDtype))>
+        @foreach (Dtype item in Enum.GetValues(typeof(Dtype)))
+        {
+            <MudSelectItem Value="@item">@item</MudSelectItem>
+        }
+    </MudSelect>
+}
+else
+{
+    <MudTextField @bind-Value="ModelConfiguration.TransformerPath" Required Label="Transformers Path" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Link" OnAdornmentClick=@(() => RedirectToLink("https://huggingface.co/Kijai/HunyuanVideo_comfy/blob/main/hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors"))></MudTextField>
+
+    <MudSelect T="Dtype?" @bind-Value="ModelConfiguration.TransformerDType" Required Label="Transformers Dtype" FullWidth="true" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.TransformerDtype))>
+        @foreach (Dtype? item in Enum.GetValues(typeof(Dtype)))
+        {
+            <MudSelectItem Value="@item">@item</MudSelectItem>
+        }
+    </MudSelect>
+
+    <MudTextField @bind-Value="ModelConfiguration.VaePath" Required Label="VAE Path" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Link" OnAdornmentClick=@(() => RedirectToLink("https://huggingface.co/Kijai/HunyuanVideo_comfy/blob/main/hunyuan_video_vae_bf16.safetensors"))></MudTextField>
+
+    <MudTextField @bind-Value="ModelConfiguration.LlmPath" Required Label="LLM Path" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Link" OnAdornmentClick=@(() => RedirectToLink("https://huggingface.co/Kijai/llava-llama-3-8b-text-encoder-tokenizer/tree/main"))></MudTextField>
+
+    <MudTextField @bind-Value="ModelConfiguration.ClipPath" Required Label="CLIP Path" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Link" OnAdornmentClick=@(() => RedirectToLink("https://huggingface.co/openai/clip-vit-large-patch14/tree/main"))></MudTextField>
+}
+
+
+<MudSelect T="SampleMethod?" @bind-Value="ModelConfiguration.TimestepSampleMethod" Required Label="Timestep Sample Method" FullWidth="true" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.TimestepSampleMethod))>
+    @foreach (SampleMethod? item in Enum.GetValues(typeof(SampleMethod)))
+    {
+        <MudSelectItem Value="@item">@item</MudSelectItem>
+    }
+</MudSelect>
+
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public HunyuanModelConfigurationViewModel ModelConfiguration { get; set; } = null!;
+    [Parameter]
+    public bool Locked { get; set; } = false;
+
+    protected override void OnInitialized()
+    {
+        if (Configuration != null && AppSettingsConfiguration != null)
+        {
+            var hunyuanDefaultConfig = Configuration.GetSection("Configurations:Models:Hunyuan");
+            if (hunyuanDefaultConfig != null)
+            {
+                ModelConfiguration.CkptPath = hunyuanDefaultConfig["CkptPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+                ModelConfiguration.TransformerPath = hunyuanDefaultConfig["TransformerPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+                ModelConfiguration.VaePath = hunyuanDefaultConfig["VaePath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+                ModelConfiguration.ClipPath = hunyuanDefaultConfig["ClipPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+                ModelConfiguration.LlmPath = hunyuanDefaultConfig["LlmPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+            }
+        }
+    }
+
+    private Task OpenDialogAsync(string message)
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large };
+
+        var parameters = new DialogParameters<InfoDialog>
+        {
+            { x => x.Message, message }
+        };
+
+        return DialogService.ShowAsync<InfoDialog>("Info", parameters, options);
+    }
+
+    private void RedirectToLink(string link)
+    {
+        JSRuntime.InvokeVoidAsync("openNewTab", link);
+    }
+}

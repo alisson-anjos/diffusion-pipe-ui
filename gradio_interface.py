@@ -26,8 +26,6 @@ MAX_MEDIA = 50
 # Determine if running on Runpod by checking the environment variable
 IS_RUNPOD = os.getenv("IS_RUNPOD", "false").lower() == "true"
 
-CONDA_DIR = os.getenv("CONDA_DIR", "/opt/conda")  # Directory where Conda is installed in the Docker container
-
 # Maximum upload size in MB (Gradio expects max_file_size in MB)
 MAX_UPLOAD_SIZE_MB = 500 if IS_RUNPOD else None  # 500MB or no limit
 

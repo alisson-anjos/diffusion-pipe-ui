@@ -1,0 +1,60 @@
+﻿@using DiffusionPipeInterface.Models
+@using DiffusionPipeInterface.Utils
+@using DiffusionPipeInterface.ViewModels.Models
+@using Enums
+@inject IConfiguration Configuration
+@inject AppSettingsConfiguration AppSettingsConfiguration
+@inject IDialogService DialogService
+@inject IJSRuntime JSRuntime
+
+<MudTextField @bind-Value="ModelConfiguration.TransformerPath" Required Label="Transformer Path" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Link" OnAdornmentClick=@(() => RedirectToLink("https://huggingface.co/nvidia/Cosmos-1.0-Diffusion-7B-Text2World/tree/main"))></MudTextField>
+
+<MudTextField @bind-Value="ModelConfiguration.VaePath" Required Label="VAE Path" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Link" OnAdornmentClick=@(() => RedirectToLink("https://huggingface.co/comfyanonymous/cosmos_1.0_text_encoder_and_VAE_ComfyUI/blob/main/vae/cosmos_cv8x8x8_1.0.safetensors"))></MudTextField>
+
+<MudTextField @bind-Value="ModelConfiguration.TextEncoderPath" Required Label="Text Encoder Path" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Link" OnAdornmentClick=@(() => RedirectToLink("https://huggingface.co/comfyanonymous/cosmos_1.0_text_encoder_and_VAE_ComfyUI/tree/main/text_encoders"))></MudTextField>
+
+<MudSelect T="Dtype" @bind-Value="ModelConfiguration.Dtype" Required Label="Dtype" FullWidth="true" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.ModelDtype))>
+    @foreach (Dtype item in Enum.GetValues(typeof(Dtype)))
+    {
+        <MudSelectItem Value="@item">@item</MudSelectItem>
+    }
+</MudSelect>
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public CosmosModelConfigurationViewModel ModelConfiguration { get; set; } = null!;
+    [Parameter]
+    public bool Locked { get; set; } = false;
+
+    protected override void OnInitialized()
+    {
+        if (Configuration != null && AppSettingsConfiguration != null)
+        {
+            var defaultConfig = Configuration.GetSection("Configurations:Models:Cosmos");
+            if (defaultConfig != null)
+            {
+                ModelConfiguration.TransformerPath = defaultConfig["TransformerPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+                ModelConfiguration.VaePath = defaultConfig["VaePath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+                ModelConfiguration.TextEncoderPath = defaultConfig["TextEncoderPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) ?? "";
+            }
+        }
+    }
+
+    private Task OpenDialogAsync(string message)
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large };
+
+        var parameters = new DialogParameters<InfoDialog>
+        {
+            { x => x.Message, message }
+        };
+
+        return DialogService.ShowAsync<InfoDialog>("Info", parameters, options);
+    }
+
+    private void RedirectToLink(string link)
+    {
+        JSRuntime.InvokeVoidAsync("openNewTab", link);
+    }
+}
