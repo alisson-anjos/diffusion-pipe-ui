@@ -1,8 +1,9 @@
-ARG CUDA_VERSION="12.8.0"
+ARG CUDA_VERSION="12.6.0"
 ARG CUDNN_VERSION=""
 ARG UBUNTU_VERSION="22.04"
 ARG DOCKER_FROM=nvidia/cuda:$CUDA_VERSION-cudnn$CUDNN_VERSION-devel-ubuntu$UBUNTU_VERSION
 ARG GRADIO_PORT=7860
+ARG DOTNET_PORT=5000
 
 FROM $DOCKER_FROM AS base
 
@@ -47,9 +48,13 @@ RUN apt-get update -y && \
     
 RUN add-apt-repository ppa:ubuntu-toolchain-r/test && apt-get update && apt-get install libstdc++6 -y
 
-ENV LD_LIBRARY_PATH=/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH
+ENV LD_LIBRARY_PATH=/usr/local/cuda-12.6/lib64:$LD_LIBRARY_PATH
 
 RUN apt-get update && apt-get install -y git-lfs && git lfs install && apt-get install -y nginx
+
+RUN add-apt-repository ppa:dotnet/backports
+
+RUN apt install aspnetcore-runtime-9.0 -y
 
 COPY docker/default /etc/nginx/sites-available/default
 
@@ -86,5 +91,6 @@ COPY --chmod=755 docker/entrypoint.sh /entrypoint.sh
 
 # Expose the Gradio port
 EXPOSE $GRADIO_PORT
+EXPOSE $DOTNET_PORT
 
 CMD [ "/initialize.sh" ]

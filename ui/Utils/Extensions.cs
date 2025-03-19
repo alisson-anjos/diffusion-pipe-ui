@@ -508,12 +508,12 @@ namespace DiffusionPipeInterface.Utils
                 if (viewModel.OptimizerConfiguration != null)
                 {
                     var optimizerTable = new TomlTable
-                {
-                    { "type", viewModel.OptimizerConfiguration.Type.GetDescription() },
-                    { "lr", viewModel.OptimizerConfiguration.Lr },
-                    { "weight_decay", viewModel.OptimizerConfiguration.WeightDecay },
-                    { "eps", viewModel.OptimizerConfiguration.Eps }
-                };
+                    {
+                        { "type", viewModel.OptimizerConfiguration.Type.GetDescription() },
+                        { "lr", viewModel.OptimizerConfiguration.Lr },
+                        { "weight_decay", viewModel.OptimizerConfiguration.WeightDecay },
+                        { "eps", viewModel.OptimizerConfiguration.Eps }
+                    };
 
                     if (viewModel.OptimizerConfiguration.Betas != null)
                     {
@@ -521,6 +521,33 @@ namespace DiffusionPipeInterface.Utils
                     }
 
                     tomlTable.Add("optimizer", optimizerTable);
+                }
+
+
+                if (viewModel.MonitoringConfiguration != null)
+                {
+                    var monitoringTable = new TomlTable
+                    {
+                        { "log_dir", viewModel.MonitoringConfiguration.LogDir },
+                        { "enable_wandb", viewModel.MonitoringConfiguration.EnableWandb },
+                    };
+
+                    if(viewModel.MonitoringConfiguration.WandbRunName != null)
+                    {
+                        monitoringTable.Add("wandb_run_name", viewModel.MonitoringConfiguration.WandbRunName);
+                    }
+
+                    if (viewModel.MonitoringConfiguration.WandbTrackerName != null)
+                    {
+                        monitoringTable.Add("wandb_tracker_name", viewModel.MonitoringConfiguration.WandbTrackerName);
+                    }
+
+                    if (viewModel.MonitoringConfiguration.WandbApiKey != null)
+                    {
+                        monitoringTable.Add("wandb_api_key", viewModel.MonitoringConfiguration.WandbApiKey);
+                    }
+
+                    tomlTable.Add("monitoring", monitoringTable);
                 }
 
                 return Toml.FromModel(tomlTable);
