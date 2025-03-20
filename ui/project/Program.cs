@@ -22,7 +22,7 @@ builder.Services.AddRazorComponents(opt =>
 })
     .AddInteractiveServerComponents().AddHubOptions(opt => {
         opt.EnableDetailedErrors = true;
-        opt.ClientTimeoutInterval = TimeSpan.FromSeconds(60);
+        opt.ClientTimeoutInterval = TimeSpan.FromMinutes(15);
         opt.MaximumReceiveMessageSize = 2000 * 1024 * 1024;
         opt.DisableImplicitFromServicesParameters = true;
     });

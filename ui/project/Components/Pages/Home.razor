@@ -43,9 +43,9 @@
                     </MudItem>
                     @if (Configuration.UsingDiffusionPipeFromFork)
                     {
-                        <MudItem xs="12">
-                            <MonitoringParametersConfiguration Locked="InterfaceControl.TrainingLocked" TrainConfiguration="TrainConfiguration"></MonitoringParametersConfiguration>
-                        </MudItem>
+                            <MudItem xs="12">
+                                <MonitoringParametersConfiguration Locked="InterfaceControl.TrainingLocked" TrainConfiguration="TrainConfiguration"></MonitoringParametersConfiguration>
+                            </MudItem>
                     }
                     <MudItem xs="12">
                         <MudCard>
@@ -96,7 +96,7 @@
     <MudFab Color="Color.Tertiary" StartIcon="@Icons.Material.Filled.ArrowCircleUp" />
 </MudScrollToTop>
 @code {
-    #nullable enable
+#nullable enable
     private bool isUploading = false;
     private string outputText { get; set; } = string.Empty;
     private bool isTraining { get; set; } = false;
@@ -146,40 +146,88 @@
         {
             if (Configuration.UsingDiffusionPipeFromFork)
             {
-                if (e.Log.Contains("Total steps:"))
+                if (!string.IsNullOrEmpty(e.Log) && e.Log.Contains("Total steps:"))
                 {
-                    int.TryParse(e.Log.Split("Total steps:")[1].Trim(), out var totalSteps);
-                    InterfaceControl.TotalSteps = totalSteps;
+                    string[] totalStepsParts = e.Log.Split(new string[] { "Total steps:" }, StringSplitOptions.None);
+                    if (totalStepsParts.Length > 1)
+                    {
+                        string totalStepsString = totalStepsParts[1].Trim();
+                        if (int.TryParse(totalStepsString, out int totalSteps))
+                        {
+                            InterfaceControl.TotalSteps = totalSteps;
+                        }
+                        else
+                        {
+                            Console.WriteLine($"Error parsing total steps value: '{totalStepsString}'");
+                        }
+                    }
                 }
 
-                if (e.Log.Contains("Steps per epoch:"))
+                if (!string.IsNullOrEmpty(e.Log) && e.Log.Contains("Steps per epoch:"))
                 {
-                    int.TryParse(e.Log.Split("Steps per epoch:")[1].Trim(), out var stepsPerEpoch);
-                    InterfaceControl.StepsPerEpoch = stepsPerEpoch;
+                    string[] stepsPerEpochParts = e.Log.Split(new string[] { "Steps per epoch:" }, StringSplitOptions.None);
+                    if (stepsPerEpochParts.Length > 1)
+                    {
+                        string stepsPerEpochString = stepsPerEpochParts[1].Trim();
+                        if (int.TryParse(stepsPerEpochString, out int stepsPerEpoch))
+                        {
+                            InterfaceControl.StepsPerEpoch = stepsPerEpoch;
+                        }
+                        else
+                        {
+                            Console.WriteLine($"Error parsing steps per epoch value: '{stepsPerEpochString}'");
+                        }
+                    }
                 }
             }
 
-            if (e.Log.Contains("step="))
+            if (!string.IsNullOrEmpty(e.Log) && e.Log.Contains("step="))
             {
-                int.TryParse(e.Log.Split("step=")[1].Split(",")[0].Trim(), out var currentStep);
-                InterfaceControl.CurrentStep = currentStep;
+                string[] stepParts = e.Log.Split(new string[] { "step=" }, StringSplitOptions.None);
+                if (stepParts.Length > 1)
+                {
+                    string[] valueParts = stepParts[1].Split(',');
+                    if (valueParts.Length > 0)
+                    {
+                        string stepString = valueParts[0].Trim();
+                        if (int.TryParse(stepString, out int currentStep))
+                        {
+                            InterfaceControl.CurrentStep = currentStep;
+                        }
+                        else
+                        {
+                            Console.WriteLine($"Error parsing step value: '{stepString}'");
+                        }
+                    }
+                }
             }
 
-            if (e.Log.Contains("Started new epoch:"))
+            if (!string.IsNullOrEmpty(e.Log) && e.Log.Contains("Started new epoch:"))
             {
-                int.TryParse(e.Log.Split("Started new epoch:")[1].Trim(), out var currentEpoch);
-                InterfaceControl.CurrentEpoch = currentEpoch;
+                string[] epochParts = e.Log.Split(new string[] { "Started new epoch:" }, StringSplitOptions.None);
+                if (epochParts.Length > 1)
+                {
+                    string epochString = epochParts[1].Trim();
+                    if (int.TryParse(epochString, out int currentEpoch))
+                    {
+                        InterfaceControl.CurrentEpoch = currentEpoch;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Error parsing epoch value: '{epochString}'");
+                    }
+                }
             }
 
             InterfaceControl.ProgressValueTrain = TrainConfiguration.Epochs == 0 ? 0 : (InterfaceControl.CurrentEpoch / TrainConfiguration.Epochs) * 100;
 
             outputText += $"{e.Log}\n";
-
             InvokeAsync(StateHasChanged);
         }
 
         JSRuntime.InvokeVoidAsync("scrollToBottom", logOutputRef?.InputReference?.ElementReference);
     }
+
 
     private void OnProcessCompleted(object sender, Guid completedProcessId)
     {
