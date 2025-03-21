@@ -33,6 +33,12 @@ After cloning the repository, you can choose one of the following methods to run
 
 ---
 
+## Blazor Interface
+
+![preview blazor](preview-blazor.jpeg)
+
+---
+
 ## Cloning the Repository
 
 Clone the repository with submodules using:
