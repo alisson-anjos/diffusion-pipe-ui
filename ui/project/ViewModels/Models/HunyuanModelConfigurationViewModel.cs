@@ -1,8 +1,7 @@
 ﻿using DiffusionPipeInterface.Enums;
-using DiffusionPipeInterface.ViewModels;
 using System.Runtime.Serialization;
 
-namespace DiffusionPipeInterface.Models.ViewModels
+namespace DiffusionPipeInterface.ViewModels.Models
 {
     public class HunyuanModelConfigurationViewModel : ModelConfigurationViewModel
     {

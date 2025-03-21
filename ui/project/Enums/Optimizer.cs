@@ -16,7 +16,11 @@ namespace DiffusionPipeInterface.Enums
         Sgd,
         [Description("adamw8bitKahan")]
         Adamw8bitKahan,
+        //[Description("Prodigy")]
+        //Prodigy,
         [Description("offload")]
         Offload,
+
+
     }
 }

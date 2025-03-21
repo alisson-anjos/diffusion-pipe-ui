@@ -1,11 +1,11 @@
 ﻿@using DiffusionPipeInterface.Models
 @using DiffusionPipeInterface.Models.Models
-@using DiffusionPipeInterface.Models.ViewModels
 @using DiffusionPipeInterface.Utils
 @using DiffusionPipeInterface.ViewModels.Models
 @using Enums
+@using Microsoft.Extensions.Options
 @inject IConfiguration Configuration
-@inject AppSettingsConfiguration AppSettingsConfiguration
+@inject IOptionsMonitor<AppSettingsConfiguration> AppSettingsConfiguration
 @inject IDialogService DialogService
 @inject IJSRuntime JSRuntime
 
@@ -41,18 +41,19 @@
     [Parameter]
     [EditorRequired]
     public SdxlModelConfigurationViewModel ModelConfiguration { get; set; } = null!;
+
     [Parameter]
     public bool Locked { get; set; } = false;
 
+    private AppSettingsConfiguration configuration = null!;
+
     protected override void OnInitialized()
     {
-        if (Configuration != null && AppSettingsConfiguration != null)
+        configuration = AppSettingsConfiguration.CurrentValue;
+
+        if (ModelConfiguration != null && configuration.Models?.SDXL != null)
         {
-            var defaultConfig = Configuration.GetSection("Configurations:Models:SDXL");
-            if (defaultConfig != null)
-            {
-                ModelConfiguration.CheckpointPath = string.IsNullOrEmpty(ModelConfiguration.CheckpointPath) ? defaultConfig["CheckpointPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.CheckpointPath;
-            }
+            ModelConfiguration.CheckpointPath = string.IsNullOrEmpty(ModelConfiguration.CheckpointPath) ? configuration.Models.SDXL.CheckpointPath?.Replace("{ModelsPath}", configuration.ModelsPath) : ModelConfiguration.CheckpointPath;
         }
     }
 

@@ -1,4 +1,5 @@
 ﻿using DiffusionPipeInterface.Models.Models;
+using DiffusionPipeInterface.ViewModels.Models;
 
 namespace DiffusionPipeInterface.Models
 {
@@ -15,6 +16,18 @@ namespace DiffusionPipeInterface.Models
         public string EnvPath { get; set; } = null!;
         public string DiffusionPipePath { get; set; } = null!;
         public string StartTrainingCommand { get; set; } = null!;
-        public HunyuanModelConfiguration HunyuanModelConfigurationDefault { get; set; } = new();
+        public AppSettingsModelsConfiguration Models { get; set; } = new();
+    }
+
+    public class AppSettingsModelsConfiguration
+    {
+        public SdxlModelConfigurationViewModel SDXL { get; set; } = new();
+        public ChromaModelConfigurationViewModel Chroma { get; set; } = new();
+        public CosmosModelConfigurationViewModel Cosmos { get; set; } = new();
+        public FluxModelConfigurationViewModel Flux { get; set; } = new();
+        public LtxModelConfigurationViewModel LTX { get; set; } = new();
+        public LuminaModelConfigurationViewModel Lumina { get; set; } = new();
+        public WanModelConfigurationViewModel Wan21 { get; set; } = new();
+        public HunyuanModelConfigurationViewModel Hunyuan { get; set; } = new();
     }
 }

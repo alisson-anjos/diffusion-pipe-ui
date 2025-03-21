@@ -1,5 +1,7 @@
 ﻿
+using DiffusionPipeInterface.Models;
 using DiffusionPipeInterface.ViewModels;
+using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Tomlyn;
 
 namespace DiffusionPipeInterface.Utils
@@ -35,7 +37,7 @@ namespace DiffusionPipeInterface.Utils
             {
                 if(!File.Exists(Path.Combine(outputpath, "save")))
                 {
-                    File.WriteAllText(Path.Combine(outputpath, "save"), "");
+                    File.WriteAllText(Path.Combine(outputpath, "save"), "111");
                 }
             }
             catch (Exception ex)
@@ -76,7 +78,42 @@ namespace DiffusionPipeInterface.Utils
             return result;
         }
 
+        public static DatasetViewModel? GetDatasetConfiguration(string folder)
+        {
+            if (!Directory.Exists(folder))
+            {
+                Console.WriteLine($"Directory does not exist: {folder}");
+                return null;
+            }
 
+            DirectoryInfo directoryInfo = new DirectoryInfo(folder);
+            DateTime creationDate = directoryInfo.CreationTime;
+
+            string datasetName = Path.GetFileName(folder);
+
+            var datasetTomlFile = Directory.GetFiles(folder, "dataset.toml");
+            var configurationTomlFile = Directory.GetFiles(folder, "config.toml");
+
+            var datasetViewModel = new DatasetViewModel() {  Name = datasetName, Path = Path.Combine(folder, "dataset.toml"), FolderCreationDate = creationDate };
+
+            if (datasetTomlFile.Length > 0)
+            {
+                var tomlContent = File.ReadAllText(datasetTomlFile[0]);
+                var tomlTable = Toml.ToModel(tomlContent);
+                datasetViewModel.DatasetToml = tomlTable;
+            }
+
+            if (configurationTomlFile.Length > 0)
+            {
+                var tomlContent = File.ReadAllText(configurationTomlFile[0]);
+                var tomlTable = Toml.ToModel(tomlContent);
+
+                datasetViewModel.ConfigurationTomlString = tomlContent;
+                datasetViewModel.ConfigurationToml = tomlTable;
+            }
+
+            return datasetViewModel;
+        }
         public static List<DatasetViewModel> GetDatasetConfigurations(string folderPath)
         {
             var datasetConfigurations = new List<DatasetViewModel>();
@@ -96,31 +133,9 @@ namespace DiffusionPipeInterface.Utils
                 {
                     foreach (var folder in datasetFolders)
                     {
-
-                        string datasetName = Path.GetFileName(folder);
-
-                        var datasetTomlFile = Directory.GetFiles(folder, "dataset.toml");
-                        var configurationTomlFile = Directory.GetFiles(folder, "config.toml");
-
-                        var datasetViewModel = new DatasetViewModel() { Key = key, Name = datasetName, Path = Path.Combine(folder, "dataset.toml") };
-
-                        if (datasetTomlFile.Length > 0)
-                        {
-                            var tomlContent = File.ReadAllText(datasetTomlFile[0]);
-                            var tomlTable = Toml.ToModel(tomlContent);
-                            datasetViewModel.DatasetToml = tomlTable;
-                        }
-
-                        if (configurationTomlFile.Length > 0)
-                        {
-                            var tomlContent = File.ReadAllText(configurationTomlFile[0]);
-                            var tomlTable = Toml.ToModel(tomlContent);
-
-                            datasetViewModel.ConfigurationTomlString = tomlContent;
-                            datasetViewModel.ConfigurationToml = tomlTable;
-                        }
-
-                        datasetConfigurations.Add(datasetViewModel);
+                        var datasetConfiguration = GetDatasetConfiguration(folder);
+                        datasetConfiguration.Key = key;
+                        datasetConfigurations.Add(datasetConfiguration);
                         key++;
                     }
                 }

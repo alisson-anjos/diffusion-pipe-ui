@@ -1,11 +1,11 @@
 ﻿@using DiffusionPipeInterface.Models
 @using DiffusionPipeInterface.Models.Models
-@using DiffusionPipeInterface.Models.ViewModels
 @using DiffusionPipeInterface.Utils
 @using DiffusionPipeInterface.ViewModels.Models
 @using Enums
+@using Microsoft.Extensions.Options
 @inject IConfiguration Configuration
-@inject AppSettingsConfiguration AppSettingsConfiguration
+@inject IOptionsMonitor<AppSettingsConfiguration> AppSettingsConfiguration
 @inject IDialogService DialogService
 @inject IJSRuntime JSRuntime
 
@@ -35,17 +35,17 @@
     [Parameter]
     public bool Locked { get; set; } = false;
 
+    private AppSettingsConfiguration configuration = null!;
 
     protected override void OnInitialized()
     {
-        if (Configuration != null && AppSettingsConfiguration != null)
+        configuration = AppSettingsConfiguration.CurrentValue;
+
+        if (ModelConfiguration != null && configuration.Models?.LTX != null)
         {
-            var defaultConfig = Configuration.GetSection("Configurations:Models:LTX");
-            if (defaultConfig != null)
-            {
-                ModelConfiguration.DiffusersPath = string.IsNullOrEmpty(ModelConfiguration.DiffusersPath) ? defaultConfig["DiffusersPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.DiffusersPath;
-                ModelConfiguration.SingleFilePath = string.IsNullOrEmpty(ModelConfiguration.SingleFilePath) ? defaultConfig["SingleFilePath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath)! : ModelConfiguration.SingleFilePath;
-            }
+            ModelConfiguration.DiffusersPath = string.IsNullOrEmpty(ModelConfiguration.DiffusersPath) ? configuration.Models.LTX.DiffusersPath?.Replace("{ModelsPath}", configuration.ModelsPath) : ModelConfiguration.DiffusersPath;
+            ModelConfiguration.SingleFilePath = string.IsNullOrEmpty(ModelConfiguration.SingleFilePath) ? configuration.Models.LTX.SingleFilePath?.Replace("{ModelsPath}", configuration.ModelsPath)! : ModelConfiguration.SingleFilePath;
+            
         }
     }
 

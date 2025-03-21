@@ -1,7 +1,6 @@
 ﻿using DiffusionPipeInterface.Enums;
 using DiffusionPipeInterface.Models;
 using DiffusionPipeInterface.Models.Models;
-using DiffusionPipeInterface.Models.ViewModels;
 using DiffusionPipeInterface.ViewModels;
 using DiffusionPipeInterface.ViewModels.Models;
 using System.ComponentModel;

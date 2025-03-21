@@ -1,11 +1,11 @@
 ﻿@using DiffusionPipeInterface.Models
 @using DiffusionPipeInterface.Models.Models
-@using DiffusionPipeInterface.Models.ViewModels
 @using DiffusionPipeInterface.Utils
 @using DiffusionPipeInterface.ViewModels.Models
 @using Enums
+@using Microsoft.Extensions.Options
 @inject IConfiguration Configuration
-@inject AppSettingsConfiguration AppSettingsConfiguration
+@inject IOptionsMonitor<AppSettingsConfiguration> AppSettingsConfiguration
 @inject IDialogService DialogService
 @inject IJSRuntime JSRuntime
 
@@ -39,15 +39,15 @@
     [Parameter]
     public bool Locked { get; set; } = false;
 
+    private AppSettingsConfiguration configuration = null!;
+
     protected override void OnInitialized()
     {
-        if (Configuration != null && AppSettingsConfiguration != null)
+        configuration = AppSettingsConfiguration.CurrentValue;
+
+        if (ModelConfiguration != null && configuration.Models?.Wan21 != null)
         {
-            var defaultConfig = Configuration.GetSection("Configurations:Models:Wan21");
-            if (defaultConfig != null)
-            {
-                ModelConfiguration.CkptPath = string.IsNullOrEmpty(ModelConfiguration.CkptPath) ? defaultConfig["CkptPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath)! : ModelConfiguration.CkptPath;
-            }
+            ModelConfiguration.CkptPath = string.IsNullOrEmpty(ModelConfiguration.CkptPath) ? configuration.Models.Wan21.CkptPath?.Replace("{ModelsPath}", configuration.ModelsPath)! : ModelConfiguration.CkptPath;
         }
     }
 

@@ -2,31 +2,34 @@
 @using DiffusionPipeInterface.Utils
 @using DiffusionPipeInterface.ViewModels
 @using DiffusionPipeInterface.Enums
+@using Microsoft.Extensions.Options
 @using Tomlyn.Model
 @inject IDialogService DialogService
 @inject IJSRuntime JSRuntime
 @inject ISnackbar Snackbar
-@inject AppSettingsConfiguration Configuration
+@inject IOptionsMonitor<AppSettingsConfiguration> AppSettingsConfiguration
 @inject InterfaceControlViewModel InterfaceControl
 
 <MudForm @ref=datasetForm>
     <MudCard Outlined="true" Elevation="3" Class="my-2">
         <MudCardContent>
             <MudField Label="Dataset Option" Variant="Variant.Outlined" InnerPadding="false">
-                <MudRadioGroup T="string" Value="datasetOption" ValueChanged="OnDatasetOptionChanged">
+                <MudRadioGroup T="string" Value="DatasetOption" ValueChanged="OnDatasetOptionChanged">
                     <MudRadio Value="@("Create")">Create New Dataset</MudRadio>
                     <MudRadio Value="@("Select")">Select Existing Dataset</MudRadio>
                 </MudRadioGroup>
             </MudField>
-            @if (datasetOption == "Create")
+            @if (DatasetOption == "Create")
             {
                 <MudTextField @bind-Value="DatasetsConfigurations.Name" Label="Dataset Name" Disabled="InterfaceControl.CreateDatasetLocked" Required="true" RequiredError="Dataset Name is required!" Immediate="true" HelperText="" Variant="Variant.Outlined" Validation="(new Func<string, string>(DatasetNameValidation))" />
             }
             else
             {
+                @* ValueChanged="DatasetSelect" *@
+
                 <MudSelect T="DatasetViewModel"
                            Variant="Variant.Outlined"
-                           ValueChanged="DatasetSelect"
+                           @bind-Value="DatasetSelected"
                            Required
                            Clearable=true
                            Label="Dataset Name"
@@ -47,7 +50,7 @@
 
         </MudCardContent>
         <MudCardActions Class="d-flex gap-4">
-            @if (datasetOption == "Create")
+            @if (DatasetOption == "Create")
             {
                 <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" Disabled="InterfaceControl.CreateDatasetLocked" OnClick="CreateDatasetConfiguration">Create Dataset</MudButton>
             }
@@ -68,29 +71,29 @@
                 <MudItem xs="12">
                     <MudGrid Class="d-flex align-center">
                         <MudItem xs="6">
-                            <MudTextField @bind-Value="DatasetsConfigurations.ResolutionsJson" Required Label="Resolutions" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && datasetOption == "Select")) Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.Resolutions)) />
+                            <MudTextField @bind-Value="DatasetsConfigurations.ResolutionsJson" Required Label="Resolutions" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && DatasetOption == "Select")) Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.Resolutions)) />
                         </MudItem>
                         <MudItem xs="6">
-                            <MudTextField @bind-Value="DatasetsConfigurations.FrameBucketsJson" Required Label="Frame Buckets" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && datasetOption == "Select")) Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.FrameBuckets)) />
+                            <MudTextField @bind-Value="DatasetsConfigurations.FrameBucketsJson" Required Label="Frame Buckets" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && DatasetOption == "Select")) Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.FrameBuckets)) />
                         </MudItem>
                         <MudItem xs="3">
                             <InfoField TooltipText="@Tooltips.EnableArBuckets">
                                 <FieldContent>
-                                    <MudSwitch @bind-Value="DatasetsConfigurations.EnableARBucket" Color="Color.Primary" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && datasetOption == "Select")) Label="AR Bucket" />
+                                    <MudSwitch @bind-Value="DatasetsConfigurations.EnableARBucket" Color="Color.Primary" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && DatasetOption == "Select")) Label="AR Bucket" />
                                 </FieldContent>
                             </InfoField>
                         </MudItem>
                         <MudItem xs="2">
-                            <MudNumericField @bind-Value="DatasetsConfigurations.MinAR" Label="Min AR" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && datasetOption == "Select")) Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.MinMaxAr)) />
+                            <MudNumericField @bind-Value="DatasetsConfigurations.MinAR" Label="Min AR" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && DatasetOption == "Select")) Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.MinMaxAr)) />
                         </MudItem>
                         <MudItem xs="2">
-                            <MudNumericField @bind-Value="DatasetsConfigurations.MaxAR" Label="Max AR" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && datasetOption == "Select")) Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.MinMaxAr)) />
+                            <MudNumericField @bind-Value="DatasetsConfigurations.MaxAR" Label="Max AR" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && DatasetOption == "Select")) Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.MinMaxAr)) />
                         </MudItem>
                         <MudItem xs="2">
-                            <MudNumericField @bind-Value="DatasetsConfigurations.NumARBuckets" Label="Num AR Buckets" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && datasetOption == "Select")) Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.NumArBuckets)) />
+                            <MudNumericField @bind-Value="DatasetsConfigurations.NumARBuckets" Label="Num AR Buckets" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && DatasetOption == "Select")) Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.NumArBuckets)) />
                         </MudItem>
                         <MudItem xs="3">
-                            <MudTextField @bind-Value="DatasetsConfigurations.ARBucketsJson" Label="AR Buckets" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && datasetOption == "Select")) Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.ArBuckets)) />
+                            <MudTextField @bind-Value="DatasetsConfigurations.ARBucketsJson" Label="AR Buckets" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && DatasetOption == "Select")) Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.ArBuckets)) />
                         </MudItem>
                     </MudGrid>
                 </MudItem>
@@ -103,7 +106,7 @@
                 <MudText Typo="Typo.h6">Dataset Configurations</MudText>
             </CardHeaderContent>
             <CardHeaderActions>
-                <MudIconButton Icon="@Icons.Material.Outlined.Add" Color="Color.Default" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && datasetOption == "Select")) OnClick="AddDatasetDirectoryConfiguration" />
+                <MudIconButton Icon="@Icons.Material.Outlined.Add" Color="Color.Default" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && DatasetOption == "Select")) OnClick="AddDatasetDirectoryConfiguration" />
             </CardHeaderActions>
         </MudCardHeader>
         <MudCardContent>
@@ -124,7 +127,7 @@
                             <CardHeaderActions>
                                 @if (!item.DisableRemove)
                                 {
-                                    <MudIconButton Icon="@Icons.Material.Outlined.Remove" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && datasetOption == "Select")) OnClick="() => RemoveDatasetDirectoryConfiguration(item)" />
+                                    <MudIconButton Icon="@Icons.Material.Outlined.Remove" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && DatasetOption == "Select")) OnClick="() => RemoveDatasetDirectoryConfiguration(item)" />
                                 }
                             </CardHeaderActions>
                         </MudCardHeader>
@@ -133,25 +136,25 @@
                                 <MudItem xs="12">
                                     <MudGrid Class="d-flex align-center">
                                         <MudItem xs="2">
-                                            <MudFileUpload @ref=item!.MudFileUploadRef T="IReadOnlyList<IBrowserFile>" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && datasetOption == "Select")) Accept=".png, .jpg, .jpeg, .mp4, .avi, .264, .flv, .mkv, .txt" RequiredError="Dataset Files is required!" multiple OnFilesChanged="(e) => Upload(e, item!)" MaximumFileCount="10000">
+                                            <MudFileUpload @ref=item!.MudFileUploadRef T="IReadOnlyList<IBrowserFile>" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && DatasetOption == "Select")) Accept=".png, .jpg, .jpeg, .mp4, .avi, .264, .flv, .mkv, .txt" RequiredError="Dataset Files is required!" multiple OnFilesChanged="(e) => Upload(e, item!)" MaximumFileCount="10000">
                                                 <ActivatorContent>
                                                     <MudBadge Origin="@Origin.TopRight" Content="@item?.CurrentUploadTotalFiles" Max="10000" Color="Color.Primary" Overlap="true" Dot="false" Bordered="true">
-                                                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && datasetOption == "Select"))>Upload Files</MudButton>
+                                                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && DatasetOption == "Select"))>Upload Files</MudButton>
                                                     </MudBadge>
                                                 </ActivatorContent>
                                             </MudFileUpload>
                                         </MudItem>
                                         <MudItem xs="2">
-                                            <MudNumericField @bind-Value="item.NumRepeats" Required Min="1" Label="Num Repeats" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && datasetOption == "Select")) Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.NumRepeats)) />
+                                            <MudNumericField @bind-Value="item.NumRepeats" Required Min="1" Label="Num Repeats" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && DatasetOption == "Select")) Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.NumRepeats)) />
                                         </MudItem>
                                         <MudItem xs="3">
-                                            <MudTextField @bind-Value="item.ResolutionsJson" Label="Resolutions" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && datasetOption == "Select")) Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.ResolutionsSubDataset)) />
+                                            <MudTextField @bind-Value="item.ResolutionsJson" Label="Resolutions" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && DatasetOption == "Select")) Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.ResolutionsSubDataset)) />
                                         </MudItem>
                                         <MudItem xs="2">
-                                            <MudTextField @bind-Value="item.FrameBucketsJson" Label="Frame Buckets" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && datasetOption == "Select")) Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.FrameBucketsSubDataset)) />
+                                            <MudTextField @bind-Value="item.FrameBucketsJson" Label="Frame Buckets" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && DatasetOption == "Select")) Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.FrameBucketsSubDataset)) />
                                         </MudItem>
                                         <MudItem xs="3">
-                                            <MudTextField @bind-Value="item.ARBucketsJson" Label="AR Buckets" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && datasetOption == "Select")) Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.ArBucketsSubDataset)) />
+                                            <MudTextField @bind-Value="item.ARBucketsJson" Label="AR Buckets" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && DatasetOption == "Select")) Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.ArBucketsSubDataset)) />
                                         </MudItem>
                                     </MudGrid>
                                 </MudItem>
@@ -166,13 +169,13 @@
             <MudProgressLinear Color="Color.Primary" Value="@InterfaceControl.ProgressValueUpload" Size="Size.Large" Class="my-7" />
         </MudCardContent>
         <MudCardActions Class="d-flex gap-4">
-            <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && datasetOption == "Select")) OnClick="SaveDatasetConfiguration">Save Dataset</MudButton>
-            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" FullWidth="true" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && datasetOption == "Select")) OnClick="DownloadFile">Download Dataset Configuration</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && DatasetOption == "Select")) OnClick="SaveDatasetConfiguration">Save Dataset</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" FullWidth="true" Disabled=@(!InterfaceControl.CreateDatasetLocked || (InterfaceControl.DatasetSelectedLocked && DatasetOption == "Select")) OnClick="DownloadFile">Download Dataset Configuration</MudButton>
         </MudCardActions>
     </MudCard>
 </MudForm>
 
-<FileExplorer DatasetDirectoryPath="@Path.Combine(Configuration.DatasetsPath, DatasetsConfigurations.Name)" ConfigsDirectoryPath="@Configuration.ConfigsPath" ModelsDirectoryPath="@Configuration.ModelsPath" OutputsDirectoryPath="@Configuration.OutputsPath"></FileExplorer>
+<FileExplorer DatasetDirectoryPath="@Path.Combine(config.DatasetsPath, DatasetsConfigurations.Name)" ConfigsDirectoryPath="@config.ConfigsPath" ModelsDirectoryPath="@config.ModelsPath" OutputsDirectoryPath="@config.OutputsPath"></FileExplorer>
 
 @* <MudTabs Outlined="true" Position="Position.Left" Rounded="true" Border="true"
     ApplyEffectsToContainer="true" Class="mt-8" PanelClass="pa-6">
@@ -198,11 +201,32 @@
     [Parameter]
     public EventCallback OnRemove { get; set; }
 
+    public string DatasetOption { get; set; } = null!;
+
+    private DatasetViewModel? _datasetSelected;
+
+    public DatasetViewModel? DatasetSelected
+    {
+        get
+        {
+            InterfaceControl.DatasetSelectedLocked = _datasetSelected == null;
+            return _datasetSelected;
+        }
+        set
+        {
+            _datasetSelected = value;
+            InvokeAsync(async 
+                () => {
+                    await DatasetSelect(_datasetSelected);
+                }
+            );
+        }
+    }
+
     private int maxAllowedFiles = 2000;
 
     private int maxParallelUploads = 3;
 
-    private string datasetOption = null!;
     private List<DatasetViewModel> datasets = new();
 
     [Parameter]
@@ -218,15 +242,17 @@
     private FileTreeView datasetDirectoryRef;
     private FileTreeView modelsDirectoryRef;
 
-
+    private AppSettingsConfiguration config;
 
     protected override Task OnInitializedAsync()
     {
+        config = AppSettingsConfiguration.CurrentValue;
+
         InvokeAsync(NewDataset);
 
-        datasetOption = "Create";
+        DatasetOption = "Create";
 
-        datasets = FileHelper.GetDatasetConfigurations(Configuration.ConfigsPath);
+        datasets = FileHelper.GetDatasetConfigurations(config.ConfigsPath);
 
         return base.OnInitializedAsync();
     }
@@ -243,9 +269,9 @@
             Directory.CreateDirectory(item.Path);
         }
 
-        if (item.Name == Configuration.NameDatasetDefault)
+        if (item.Name == config.NameDatasetDefault)
         {
-            string datasetDirectoryPath = Path.Combine(Configuration.DatasetsPath!, DatasetsConfigurations.Name, item.Name);
+            string datasetDirectoryPath = Path.Combine(config.DatasetsPath!, DatasetsConfigurations.Name, item.Name);
             Directory.CreateDirectory(datasetDirectoryPath);
             item.Path = datasetDirectoryPath;
         }
@@ -277,14 +303,14 @@
                     FileMode.Create,
                     FileAccess.Write,
                     FileShare.None,
-                    bufferSize: Configuration.UploadChunkFileSizeInMB * 1024 * 1024,
+                    bufferSize: config.UploadChunkFileSizeInMB * 1024 * 1024,
                     options: FileOptions.Asynchronous | FileOptions.SequentialScan);
 
-                int chunkSize = Configuration.UploadChunkFileSizeInMB * 1024 * 1024;
+                int chunkSize = config.UploadChunkFileSizeInMB * 1024 * 1024;
                 var buffer = new byte[chunkSize];
                 int bytesRead;
 
-                using (var stream = file.OpenReadStream(Configuration.MaxFileSizeInMB * 1024 * 1024))
+                using (var stream = file.OpenReadStream(config.MaxFileSizeInMB * 1024 * 1024))
                 {
                     while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
                     {
@@ -346,20 +372,20 @@
             var newDatasetDirectory = new DatasetDirectoryConfigurationViewModel()
                 {
                     Name = datasetDirectoryName,
-                    Path = Path.Combine(Configuration.DatasetsPath!, DatasetsConfigurations.Name, datasetDirectoryName),
+                    Path = Path.Combine(config.DatasetsPath!, DatasetsConfigurations.Name, datasetDirectoryName),
                 };
 
             Directory.CreateDirectory(newDatasetDirectory.Path);
             DatasetsConfigurations.Directories?.Add(newDatasetDirectory);
         }
 
-        datasets = FileHelper.GetDatasetConfigurations(Configuration.ConfigsPath);
+        datasets = FileHelper.GetDatasetConfigurations(config.ConfigsPath);
     }
 
     public void RemoveDatasetDirectoryConfiguration(DatasetDirectoryConfigurationViewModel configuration)
     {
         DatasetsConfigurations.Directories?.Remove(configuration);
-        datasets = FileHelper.GetDatasetConfigurations(Configuration.ConfigsPath);
+        datasets = FileHelper.GetDatasetConfigurations(config.ConfigsPath);
     }
 
     private Task ClearAsync(DatasetDirectoryConfigurationViewModel item)
@@ -388,7 +414,7 @@
 
     private void UpdateTotalFilesInDirectories()
     {
-        string datasetPathBase = Path.Combine(Configuration.DatasetsPath!, DatasetsConfigurations.Name);
+        string datasetPathBase = Path.Combine(config.DatasetsPath!, DatasetsConfigurations.Name);
         var subdatasetDirectoriesFiles = FileHelper.GetAllFilesForDatasetConfiguration(datasetPathBase);
 
         if (DatasetsConfigurations?.Directories != null)
@@ -410,11 +436,9 @@
 
         if (dataset != null)
         {
-            // await NewDataset();
-
             DatasetsConfigurations.Name = dataset.Name;
-            TrainConfiguration.OutputDir = Path.Combine(Configuration.OutputsPath!, DatasetsConfigurations.Name);
-            TrainConfiguration.DatasetConfig = Path.Combine(Configuration.ConfigsPath!, DatasetsConfigurations.Name, "dataset.toml");
+            TrainConfiguration.OutputDir = Path.Combine(config.OutputsPath!, DatasetsConfigurations.Name);
+            TrainConfiguration.DatasetConfig = Path.Combine(config.ConfigsPath!, DatasetsConfigurations.Name, "dataset.toml");
 
 
             ModelType datasetModelType = ModelType.SDXL;
@@ -534,7 +558,7 @@
 
             if (datasetDirectoryRef != null)
             {
-                datasetDirectoryRef.LoadFileStructure(Path.Combine(Configuration.DatasetsPath!, DatasetsConfigurations!.Name));
+                datasetDirectoryRef.LoadFileStructure(Path.Combine(config.DatasetsPath!, DatasetsConfigurations!.Name));
             }
 
             await ConfigsChanged.InvokeAsync(TrainConfiguration);
@@ -542,6 +566,14 @@
         else
         {
             await NewDataset();
+        }
+    }
+
+    public async Task LoadDatasetAsync(DatasetViewModel dataset)
+    {
+        if (dataset != null)
+        {
+            await DatasetSelect(dataset);
         }
     }
 
@@ -558,7 +590,7 @@
                 {
                     new DatasetDirectoryConfigurationViewModel
                     {
-                        Name = Configuration.NameDatasetDefault,
+                        Name = config.NameDatasetDefault,
                         DisableRemove = true,
                         NumRepeats = 1,
                     }
@@ -573,16 +605,18 @@
         InterfaceControl.ProgressValueTrain = 0;
         InterfaceControl.SavingDatasetLocked = false;
 
-        datasetOption = "Create";
+        DatasetOption = "Create";
 
         InterfaceControl.CreateDatasetLocked = false;
+
+        TrainConfiguration = new();
 
         await ConfigsChanged.InvokeAsync(TrainConfiguration);
     }
 
     private string DatasetNameValidation(string datasetName)
     {
-        datasets = FileHelper.GetDatasetConfigurations(Configuration.ConfigsPath);
+        datasets = FileHelper.GetDatasetConfigurations(config.ConfigsPath);
 
         if (string.IsNullOrWhiteSpace(datasetName))
         {
@@ -609,16 +643,32 @@
         {
             try
             {
-                var defaultDatasetConfigPath = Path.Combine(Configuration.DatasetsPath!, DatasetsConfigurations.Name, Configuration.NameDatasetDefault);
+                var defaultDatasetConfigPath = Path.Combine(config.DatasetsPath!, DatasetsConfigurations.Name, config.NameDatasetDefault);
                 DatasetsConfigurations!.Directories!.First().Path = defaultDatasetConfigPath;
 
                 Directory.CreateDirectory(defaultDatasetConfigPath);
 
                 DatasetsConfigurations.Model = TrainConfiguration.ModelConfiguration.Type;
 
-                Configuration.EnsureDirectoriesExist(DatasetsConfigurations.Name);
+                config.EnsureDirectoriesExist(DatasetsConfigurations.Name);
+
+                string tomlString = DatasetsConfigurations.GenerateToml();
+
+                var datasetConfigPath = Path.Combine(config.ConfigsPath!, DatasetsConfigurations.Name, "dataset.toml");
+
+                FileHelper.SaveToml(tomlString, datasetConfigPath);
 
                 Snackbar.Add("Dataset created", Severity.Success);
+
+                var modelType = TrainConfiguration.ModelConfiguration.Type;
+
+                TrainConfiguration = new()
+                    {
+                        ModelConfiguration = new()
+                        {
+                            Type = modelType
+                        }
+                    };
 
                 InterfaceControl.CreateDatasetLocked = true;
             }
@@ -630,13 +680,13 @@
             {
                 InterfaceControl.IsUploading = false;
                 // DatasetsConfigurations?.Directories?.ForEach(x => x.Files = null);
-                StateHasChanged();
+                await ConfigsChanged.InvokeAsync(TrainConfiguration);
             }
 
         }
     }
 
-    private async Task SaveDatasetConfiguration()
+    public async Task SaveDatasetConfiguration()
     {
         await datasetDirectoryForm.Validate();
 
@@ -646,8 +696,8 @@
             {
                 string tomlString = DatasetsConfigurations.GenerateToml();
 
-                TrainConfiguration.DatasetConfig = Path.Combine(Configuration.ConfigsPath!, DatasetsConfigurations.Name, "dataset.toml");
-                TrainConfiguration.OutputDir = Path.Combine(Configuration.OutputsPath!, DatasetsConfigurations.Name);
+                TrainConfiguration.DatasetConfig = Path.Combine(config.ConfigsPath!, DatasetsConfigurations.Name, "dataset.toml");
+                TrainConfiguration.OutputDir = Path.Combine(config.OutputsPath!, DatasetsConfigurations.Name);
 
                 FileHelper.SaveToml(tomlString, TrainConfiguration.DatasetConfig);
 
@@ -680,7 +730,7 @@
 
     private void OnDatasetOptionChanged(string value)
     {
-        datasetOption = value;
+        DatasetOption = value;
         InterfaceControl.CreateDatasetLocked = !(value == "Create");
         InterfaceControl.DatasetSelectedLocked = value == "Select";
         StateHasChanged();
@@ -689,7 +739,7 @@
 
     private async Task DownloadFile()
     {
-        var filePath = Path.Combine(Configuration.ConfigsPath!, DatasetsConfigurations.Name, "dataset.toml");
+        var filePath = Path.Combine(config.ConfigsPath!, DatasetsConfigurations.Name, "dataset.toml");
         var url = $"/download-config?filePath={Uri.EscapeDataString(filePath)}";
 
         await JSRuntime.InvokeVoidAsync("open", url, "_blank");

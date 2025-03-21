@@ -4,21 +4,24 @@
 @using DiffusionPipeInterface.Models
 @using DiffusionPipeInterface.Models.Models
 @using DiffusionPipeInterface.Models.Process
-@using DiffusionPipeInterface.Models.ViewModels
 @using DiffusionPipeInterface.Services
 @using DiffusionPipeInterface.ViewModels
 @using DiffusionPipeInterface.ViewModels.Models
 @using Microsoft.EntityFrameworkCore
+@using System.Text.RegularExpressions
+@using Microsoft.Extensions.Options
 @using Tomlyn
 @using Tomlyn.Model
 @using Utils
 @inject IDbContextFactory<AppDbContext> dbContextFactory;
 @inject ISnackbar Snackbar
-@inject AppSettingsConfiguration Configuration
+@inject IOptionsMonitor<AppSettingsConfiguration> Configuration
 @inject ProcessManager ProcessManager
 @inject IJSRuntime JSRuntime
 @inject FolderMonitorService FolderMonitorService
 @inject InterfaceControlViewModel InterfaceControl
+@inject IDialogService DialogService
+
 @implements IDisposable
 
 <MudContainer Fixed="true">
@@ -41,11 +44,11 @@
                     <MudItem xs="12">
                         <AdapterParametersConfiguration Locked="InterfaceControl.TrainingLocked" TrainConfiguration="TrainConfiguration"></AdapterParametersConfiguration>
                     </MudItem>
-                    @if (Configuration.UsingDiffusionPipeFromFork)
+                    @if (config.UsingDiffusionPipeFromFork)
                     {
-                            <MudItem xs="12">
-                                <MonitoringParametersConfiguration Locked="InterfaceControl.TrainingLocked" TrainConfiguration="TrainConfiguration"></MonitoringParametersConfiguration>
-                            </MudItem>
+                        <MudItem xs="12">
+                            <MonitoringParametersConfiguration Locked="InterfaceControl.TrainingLocked" TrainConfiguration="TrainConfiguration"></MonitoringParametersConfiguration>
+                        </MudItem>
                     }
                     <MudItem xs="12">
                         <MudCard>
@@ -86,9 +89,6 @@
         <MudItem xs="12">
             <MudTextField T="string" @ref=logOutputRef @bind-Value="outputText" Label="Output Logs" Typo="Typo.body2" ReadOnly="true" Variant="Variant.Outlined" Lines="50" MaxLines="Int32.MaxValue" />
         </MudItem>
-        @*  <MudItem xs="12">
-            <FileTreeView @ref=outputTreeViewRef Title="Output Directory" DirectoryPath="@Path.Combine(Configuration.OutputsPath!, datasetDirectoryConfigurationRef.DatasetsConfigurations.Name)"></FileTreeView>
-        </MudItem> *@
     </MudGrid>
 </MudContainer>
 
@@ -96,7 +96,7 @@
     <MudFab Color="Color.Tertiary" StartIcon="@Icons.Material.Filled.ArrowCircleUp" />
 </MudScrollToTop>
 @code {
-#nullable enable
+    #nullable enable
     private bool isUploading = false;
     private string outputText { get; set; } = string.Empty;
     private bool isTraining { get; set; } = false;
@@ -106,20 +106,19 @@
     private Components.DatasetDirectoryConfiguration datasetDirectoryConfigurationRef = null!;
     private FileTreeView outputTreeViewRef = null!;
 
-    // private MudSelect<ModelType> modelTypeInputRef;
+    private AppSettingsConfiguration config;
 
     private ModelType modelType = ModelType.SDXL;
 
-
-    private string _folderPath;
     private List<string> _files = new List<string>();
 
     public TrainConfigurationViewModel TrainConfiguration { get; set; } = new();
 
     private MudForm trainingForm = new();
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
+        config = Configuration.CurrentValue;
         FolderMonitorService.OnNewSubfolderCreated += HandleNewFile;
     }
 
@@ -144,7 +143,7 @@
     {
         if (e.ProcessId == processId)
         {
-            if (Configuration.UsingDiffusionPipeFromFork)
+            if (config.UsingDiffusionPipeFromFork)
             {
                 if (!string.IsNullOrEmpty(e.Log) && e.Log.Contains("Total steps:"))
                 {
@@ -255,6 +254,17 @@
                 }
                 else
                 {
+                    var datasetPath = Path.Combine(config.ConfigsPath!, processInfo.DatasetName);
+                    var dataset = FileHelper.GetDatasetConfiguration(datasetPath);
+
+                    if (datasetDirectoryConfigurationRef != null && dataset != null && TrainConfiguration.DatasetConfig == null)
+                    {
+                        datasetDirectoryConfigurationRef.DatasetOption = "Select";
+                        datasetDirectoryConfigurationRef.DatasetSelected = dataset!;
+                        // InterfaceControl.DatasetSelectedLocked && datasetOption == "Select")
+                        await datasetDirectoryConfigurationRef.LoadDatasetAsync(dataset);
+                    }
+
                     isTraining = true;
                 }
             }
@@ -296,9 +306,16 @@
 
             try
             {
+                if (TrainConfiguration.DatasetConfig == null && TrainConfiguration.OutputDir == null)
+                {
+                    await datasetDirectoryConfigurationRef.SaveDatasetConfiguration();
+                }
+
                 var trainToml = TrainConfiguration.GenerateToml();
 
-                var trainPath = Path.Combine(Configuration.ConfigsPath!, datasetDirectoryConfigurationRef.DatasetsConfigurations.Name, "config.toml");
+                var datasetName = datasetDirectoryConfigurationRef.DatasetsConfigurations.Name;
+
+                var trainPath = Path.Combine(config.ConfigsPath!, datasetName, "config.toml");
 
                 FileHelper.SaveToml(trainToml, trainPath);
 
@@ -310,10 +327,19 @@
                 InterfaceControl.CurrentEpoch = 0;
                 InterfaceControl.StepsPerEpoch = 0;
 
-                var command = Configuration.StartTrainingCommand;
-                command = command.Replace("{EnvPath}", Configuration.EnvPath)
-                            .Replace("{DiffusionPipePath}", Configuration.DiffusionPipePath)
+                var command = config.StartTrainingCommand;
+                command = command.Replace("{EnvPath}", config.EnvPath)
+                            .Replace("{DiffusionPipePath}", config.DiffusionPipePath)
                             .Replace("{TrainConfig}", trainPath);
+
+                var numGpus = Environment.GetEnvironmentVariable("NUM_GPUS");
+
+                if (numGpus != null && int.TryParse(numGpus, out var numGpusInt))
+                {
+                    Console.WriteLine($"DPI - NUM_GPUS: {numGpusInt}");
+                    string pattern = @"--num_gpus\s*=\s*\S+";
+                    command = Regex.Replace(command, pattern, $"--num_gpus={numGpusInt}");
+                }
 
                 if (!Directory.Exists(TrainConfiguration.OutputDir))
                 {
@@ -322,7 +348,7 @@
 
                 FolderMonitorService.SetFolderPath(TrainConfiguration.OutputDir);
 
-                processId = ProcessManager.StartProcess(command, Configuration.DiffusionPipePath);
+                processId = ProcessManager.StartProcess(command, config.DiffusionPipePath, datasetName);
 
                 await SaveProcessIdToLocalStorageAsync(processId.Value);
 
@@ -352,9 +378,17 @@
         }
     }
 
-    private void ForceSaveCheckpoint()
+    private async Task ForceSaveCheckpoint()
     {
-        FileHelper.ForceSaveCheckpoint(TrainConfiguration.OutputDir);
+        bool? result = await DialogService.ShowMessageBox(
+           "Warning",
+           "Make sure your training is in progress (when you already have the steps incrementing), if you force the checkpoint save without this condition you will probably have errors.",
+           yesText: "Force!", cancelText: "Cancel");
+
+        if (result == true)
+        {
+            FileHelper.ForceSaveCheckpoint(TrainConfiguration.OutputDir);
+        }
     }
 
     private void HandleNewFile(string filePath)

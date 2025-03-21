@@ -57,11 +57,6 @@ builder.Services.Configure<AppSettingsConfiguration>(builder.Configuration.GetSe
 
 var appSettings = builder.Configuration.GetSection("Configurations").Get<AppSettingsConfiguration>()!;
 
-builder.Services.AddSingleton<AppSettingsConfiguration>(sp =>
-{
-    return appSettings;
-});
-
 appSettings.EnsureDirectoriesExist();
 
 var app = builder.Build();

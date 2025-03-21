@@ -13,7 +13,7 @@ namespace DiffusionPipeInterface.Services
 
         public event EventHandler<Guid> ProcessCompleted;
 
-        public Guid StartProcess(string command, string workingDirectory)
+        public Guid StartProcess(string command, string workingDirectory, string datasetName)
         {
             var processId = Guid.NewGuid();
             var processInfo = new ProcessInfo
@@ -21,6 +21,7 @@ namespace DiffusionPipeInterface.Services
                 Id = processId,
                 Command = command,
                 WorkingDirectory = workingDirectory,
+                DatasetName = datasetName,
                 Logs = new System.Collections.Concurrent.ConcurrentQueue<string>(),
                 IsRunning = true
             };

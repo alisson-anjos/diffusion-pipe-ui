@@ -7,6 +7,8 @@ namespace DiffusionPipeInterface.ViewModels
         public int Key { get; set; }
         public string Name { get; set; } = null!;
         public string Path { get; set; } = null!;
+
+        public DateTime FolderCreationDate = DateTime.Now;
         public TomlTable DatasetToml { get; set; } = null!;
         public TomlTable? ConfigurationToml { get; set; }
         public string? ConfigurationTomlString { get; set; }

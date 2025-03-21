@@ -1,14 +1,17 @@
 ﻿using DiffusionPipeInterface.Enums;
-using System.ComponentModel.DataAnnotations.Schema;
-using System.ComponentModel.DataAnnotations;
-using System.Text.Json;
 using DiffusionPipeInterface.Utils;
 using System.Runtime.Serialization;
+using System.Text.Json;
 
 namespace DiffusionPipeInterface.ViewModels
 {
     public class OptimizerConfigurationViewModel
     {
+        public OptimizerConfigurationViewModel()
+        {
+            BetasJson = "[0.9, 0.99]";
+        }
+
         public int Id { get; set; }
 
         [IgnoreDataMember]

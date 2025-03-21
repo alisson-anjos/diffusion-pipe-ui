@@ -2,8 +2,9 @@
 @using DiffusionPipeInterface.Utils
 @using DiffusionPipeInterface.ViewModels.Models
 @using Enums
+@using Microsoft.Extensions.Options
 @inject IConfiguration Configuration
-@inject AppSettingsConfiguration AppSettingsConfiguration
+@inject IOptionsMonitor<AppSettingsConfiguration> AppSettingsConfiguration
 @inject IDialogService DialogService
 @inject IJSRuntime JSRuntime
 
@@ -27,18 +28,17 @@
     [Parameter]
     public bool Locked { get; set; } = false;
 
+    private AppSettingsConfiguration configuration = null!;
+
     protected override void OnInitialized()
     {
-        if (Configuration != null && AppSettingsConfiguration != null)
-        {
-            var defaultConfig = Configuration.GetSection("Configurations:Models:Cosmos");
-            if (defaultConfig != null)
-            {
+        configuration = AppSettingsConfiguration.CurrentValue;
 
-                ModelConfiguration.TransformerPath = string.IsNullOrEmpty(ModelConfiguration.TransformerPath) ? defaultConfig["TransformerPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.TransformerPath;
-                ModelConfiguration.VaePath = string.IsNullOrEmpty(ModelConfiguration.VaePath) ? defaultConfig["VaePath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.VaePath;
-                ModelConfiguration.TextEncoderPath = string.IsNullOrEmpty(ModelConfiguration.TextEncoderPath) ? defaultConfig["TextEncoderPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.TextEncoderPath;
-            }
+        if (ModelConfiguration != null && configuration.Models?.Cosmos != null)
+        {
+            ModelConfiguration.TransformerPath = string.IsNullOrEmpty(ModelConfiguration.TransformerPath) ? configuration.Models.Cosmos.TransformerPath?.Replace("{ModelsPath}", configuration.ModelsPath) : ModelConfiguration.TransformerPath;
+            ModelConfiguration.VaePath = string.IsNullOrEmpty(ModelConfiguration.VaePath) ? configuration.Models.Cosmos.VaePath?.Replace("{ModelsPath}", configuration.ModelsPath) : ModelConfiguration.VaePath;
+            ModelConfiguration.TextEncoderPath = string.IsNullOrEmpty(ModelConfiguration.TextEncoderPath) ? configuration.Models.Cosmos.TextEncoderPath?.Replace("{ModelsPath}", configuration.ModelsPath) : ModelConfiguration.TextEncoderPath;
         }
     }
 

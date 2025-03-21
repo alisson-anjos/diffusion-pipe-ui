@@ -1,8 +1,6 @@
-﻿using System.ComponentModel.DataAnnotations.Schema;
-using System.ComponentModel.DataAnnotations;
-using System.Text.Json;
+﻿using DiffusionPipeInterface.Enums;
 using System.Runtime.Serialization;
-using DiffusionPipeInterface.Enums;
+using System.Text.Json;
 
 namespace DiffusionPipeInterface.ViewModels
 {

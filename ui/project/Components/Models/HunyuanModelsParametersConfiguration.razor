@@ -1,10 +1,10 @@
 ﻿@using DiffusionPipeInterface.Models
-@using DiffusionPipeInterface.Models.ViewModels
 @using DiffusionPipeInterface.ViewModels.Models
 @using Enums
+@using Microsoft.Extensions.Options
 @using Utils
 @inject IConfiguration Configuration
-@inject AppSettingsConfiguration AppSettingsConfiguration
+@inject IOptionsMonitor<AppSettingsConfiguration> AppSettingsConfiguration
 @inject IDialogService DialogService
 @inject IJSRuntime JSRuntime
 
@@ -55,19 +55,19 @@ else
     [Parameter]
     public bool Locked { get; set; } = false;
 
+    private AppSettingsConfiguration configuration = null!;
+
     protected override void OnInitialized()
     {
-        if (Configuration != null && AppSettingsConfiguration != null)
+        configuration = AppSettingsConfiguration.CurrentValue;
+
+        if (ModelConfiguration != null && configuration.Models?.Hunyuan != null)
         {
-            var hunyuanDefaultConfig = Configuration.GetSection("Configurations:Models:Hunyuan");
-            if (hunyuanDefaultConfig != null)
-            {
-                ModelConfiguration.CkptPath = string.IsNullOrEmpty(ModelConfiguration.CkptPath) ? hunyuanDefaultConfig["CkptPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath)! : ModelConfiguration.CkptPath;
-                ModelConfiguration.TransformerPath = string.IsNullOrEmpty(ModelConfiguration.TransformerPath) ? hunyuanDefaultConfig["TransformerPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.TransformerPath;
-                ModelConfiguration.VaePath = string.IsNullOrEmpty(ModelConfiguration.VaePath) ? hunyuanDefaultConfig["VaePath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.VaePath;
-                ModelConfiguration.ClipPath = string.IsNullOrEmpty(ModelConfiguration.ClipPath) ? hunyuanDefaultConfig["ClipPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.ClipPath;
-                ModelConfiguration.LlmPath = string.IsNullOrEmpty(ModelConfiguration.LlmPath) ? hunyuanDefaultConfig["LlmPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.LlmPath;
-            }
+            ModelConfiguration.CkptPath = string.IsNullOrEmpty(ModelConfiguration.CkptPath) ? configuration.Models.Hunyuan.CkptPath?.Replace("{ModelsPath}", configuration.ModelsPath)! : ModelConfiguration.CkptPath;
+            ModelConfiguration.TransformerPath = string.IsNullOrEmpty(ModelConfiguration.TransformerPath) ? configuration.Models.Hunyuan.TransformerPath?.Replace("{ModelsPath}", configuration.ModelsPath) : ModelConfiguration.TransformerPath;
+            ModelConfiguration.VaePath = string.IsNullOrEmpty(ModelConfiguration.VaePath) ? configuration.Models.Hunyuan.VaePath?.Replace("{ModelsPath}", configuration.ModelsPath) : ModelConfiguration.VaePath;
+            ModelConfiguration.ClipPath = string.IsNullOrEmpty(ModelConfiguration.ClipPath) ? configuration.Models.Hunyuan.ClipPath?.Replace("{ModelsPath}", configuration.ModelsPath) : ModelConfiguration.ClipPath;
+            ModelConfiguration.LlmPath = string.IsNullOrEmpty(ModelConfiguration.LlmPath) ? configuration.Models.Hunyuan.LlmPath?.Replace("{ModelsPath}", configuration.ModelsPath) : ModelConfiguration.LlmPath;
         }
     }
 

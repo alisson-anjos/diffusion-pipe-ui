@@ -2,8 +2,9 @@
 @using DiffusionPipeInterface.Utils
 @using DiffusionPipeInterface.ViewModels.Models
 @using Enums
+@using Microsoft.Extensions.Options
 @inject IConfiguration Configuration
-@inject AppSettingsConfiguration AppSettingsConfiguration
+@inject IOptionsMonitor<AppSettingsConfiguration> AppSettingsConfiguration
 @inject IDialogService DialogService
 @inject IJSRuntime JSRuntime
 
@@ -45,16 +46,16 @@
     [Parameter]
     public bool Locked { get; set; } = false;
 
+    private AppSettingsConfiguration configuration = null!;
+
     protected override void OnInitialized()
     {
-        if (Configuration != null && AppSettingsConfiguration != null)
+        configuration = AppSettingsConfiguration.CurrentValue;
+
+        if (ModelConfiguration != null && configuration.Models?.Flux != null)
         {
-            var defaultConfig = Configuration.GetSection("Configurations:Models:Flux");
-            if (defaultConfig != null)
-            {
-                ModelConfiguration.TransformerPath = string.IsNullOrEmpty(ModelConfiguration.TransformerPath) ? defaultConfig["TransformerPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.TransformerPath;
-                ModelConfiguration.DiffusersPath = string.IsNullOrEmpty(ModelConfiguration.DiffusersPath) ? defaultConfig["DiffusersPath"]?.Replace("{ModelsPath}", AppSettingsConfiguration.ModelsPath) : ModelConfiguration.DiffusersPath;
-            }
+            ModelConfiguration.TransformerPath = string.IsNullOrEmpty(ModelConfiguration.TransformerPath) ? configuration.Models.Flux.TransformerPath?.Replace("{ModelsPath}", configuration.ModelsPath) : ModelConfiguration.TransformerPath;
+            ModelConfiguration.DiffusersPath = string.IsNullOrEmpty(ModelConfiguration.DiffusersPath) ? configuration.Models.Flux.DiffusersPath?.Replace("{ModelsPath}", configuration.ModelsPath) : ModelConfiguration.DiffusersPath;
         }
     }
 
