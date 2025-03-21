@@ -14,7 +14,7 @@ This repository is a fork of [diffusion-pipe](https://github.com/tdrussell/diffu
 Clone the repository with submodules using:
 
 ```bash
-git clone --recurse-submodules https://github.com/alisson-anjos/diffusion-pipe-ui
+git clone --recurse-submodules https://github.com/alisson-anjos/diffusion-pipe-ui && cd diffusion-pipe-ui && git checkout new-ui
 ```
 
 If you already cloned it without submodules, run:
