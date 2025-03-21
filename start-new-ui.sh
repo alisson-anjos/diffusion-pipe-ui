@@ -1,2 +1,3 @@
 #!/bin/bash
-dotnet ui/deploy/DiffusionPipeInterface.dll --urls=http://0.0.0.0:5000
+cd ui/deploy
+dotnet DiffusionPipeInterface.dll --urls=http://0.0.0.0:5000

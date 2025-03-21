@@ -4,17 +4,41 @@ This repository is a fork of [diffusion-pipe](https://github.com/tdrussell/diffu
 
 ---
 
-## Blazor Interface
+## Quick Start
 
-![preview blazor](preview-blazor.jpeg)
+After cloning the repository, you can choose one of the following methods to run the interface:
 
+1. **Easy Installation Script (Manual Execution on Linux):**  
+   Use the provided `easy-install.sh` script to automatically install dependencies, set up a virtual environment, install required Python packages, install .NET 9, and launch the Blazor interface.  
+   _Usage:_  
+   ```bash
+   chmod +x easy-install.sh
+   ./easy-install.sh
+   ```
+
+2. **RunPod Deployment:**  
+   Ideal for deploying the interface in the cloud where the image is automatically downloaded and run.  
+   [Deploy on RunPod](https://runpod.io/console/deploy?template=njiks0yigu&ref=8t518hht)
+
+3. **Local Docker Use:**  
+   Run the interface inside a Docker container on your local machine. Configure environment variables (such as `DOWNLOAD_MODELS`, `MODEL_GROUPS`, and `WAN_VARIANTS`) to control features like automatic model downloads.  
+   _Example:_  
+   ```bash
+   docker run --gpus all -d -p 8888:8888 -p 6006:6006 -p 5000:5000 \
+     -e DOWNLOAD_MODELS=true \
+     -e MODEL_GROUPS="wan,hunyuan" \
+     -e WAN_VARIANTS="I2V480P,T2V480P-14B" \
+     alissonpereiraanjos/diffusion-pipe-new-ui:latest
+   ```
+
+---
 
 ## Cloning the Repository
 
 Clone the repository with submodules using:
 
 ```bash
-git clone --recurse-submodules https://github.com/alisson-anjos/diffusion-pipe-ui
+git clone --recurse-submodules https://github.com/alisson-anjos/diffusion-pipe-ui && cd diffusion-pipe-ui && git checkout new-ui
 ```
 
 If you already cloned it without submodules, run:
@@ -32,13 +56,14 @@ git submodule update
   - New interface developed in Blazor (dotnet).
   - Settings (paths, training commands, model downloads, etc.) are defined in the `appsettings.json` file (located at `diffusion-pipe/ui/deploy/appsettings.json`).
   - Integrated environment variables for container use, such as:
-    - `DOWNLOAD_MODELS`: (true/false) � controls whether models are automatically downloaded.
+    - `DOWNLOAD_MODELS`: (true/false) – controls whether models are automatically downloaded.
     - `MODEL_GROUPS`: list of model groups to be processed (e.g., `"wan,hunyuan"`).
-    - `WAN_VARIANTS`: if the "wan" group is configured, specifies the variants to download (e.g., `"I2V480P,T2V480P-14B"`).
+    - `WAN_VARIANTS`: if the "wan" group is configured, specifies the variants to download (e.g., `"I2V480P,T2V480T-14B"`).
   - Support for parallelism configuration via the **NUM_GPUS** parameter (or the `--num_gpus` flag).
 
 - **2025-01-17 (diffusion-pipe original)**
   - Fixes and improvements in training, including adjustments for hunyuanvideo VAE and enhancements in the quality of trained LoRAs.
+
 ---
 
 ## Important Differences in This Fork
@@ -120,16 +145,16 @@ This section defines the paths and commands required for the interface to intera
   To use NVIDIA acceleration, install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) (Linux) or configure support as needed on Windows/macOS.
 
 - **.NET 9 (for Manual Execution)**  
-- [How to install](https://dotnet.microsoft.com/en-us/download)
-- For manual execution on Linux, install the .NET 9 runtime. On Ubuntu, you can install it with:
-  ```bash
-  sudo apt update
-  sudo apt install software-properties-common
-  sudo add-apt-repository ppa:dotnet/backports
-  sudo apt update
-  sudo apt install aspnetcore-runtime-9.0
-  ```
-  > If you encounter an error with `add-apt-repository`, ensure that `software-properties-common` is installed.
+  - [How to install](https://dotnet.microsoft.com/en-us/download)  
+  - For manual execution on Linux, install the .NET 9 runtime. On Ubuntu, you can install it with:
+    ```bash
+    sudo apt update
+    sudo apt install software-properties-common
+    sudo add-apt-repository ppa:dotnet/backports
+    sudo apt update
+    sudo apt install aspnetcore-runtime-9.0
+    ```
+    > If you encounter an error with `add-apt-repository`, ensure that `software-properties-common` is installed.
 
 ---
 
@@ -168,8 +193,8 @@ This repository offers three execution options:
 
 3. **Manual Execution (Without Docker)**  
    For direct use of the fork:  
-   - Configure `appsettings.json` (located at `diffusion-pipe/ui/deploy/appsettings.json`), adjusting paths according to your system�s structure.  
-   - Manually download the models and place them in the specified directories.  
+   - Configure `appsettings.json` (located at `diffusion-pipe/ui/deploy/appsettings.json`), adjusting paths according to your system’s structure.
+   - Manually download the models and place them in the specified directories.
    - For advanced interface customization, use the Visual Studio project located in `diffusion-pipe/ui/project` (the version in `ui/deploy` is precompiled).
 
 > **Important:** Some settings and behaviors in this fork differ from the original repository. Please review the configuration carefully if you are migrating from the original [diffusion-pipe](https://github.com/tdrussell/diffusion-pipe).
@@ -231,7 +256,7 @@ If you choose to run the interface manually:
 
 2. **Configure `appsettings.json`:**  
    - Located at `diffusion-pipe/ui/deploy/appsettings.json`.  
-   - Adjust the paths for datasets, configs, outputs, and models according to your system�s structure.  
+   - Adjust the paths for datasets, configs, outputs, and models according to your system’s structure.  
    - **Note:** In this mode, automatic model downloading will not occur; you must download the models manually and place them in the specified directories.
 
 3. **Install .NET 9:**  
@@ -240,7 +265,8 @@ If you choose to run the interface manually:
 4. **Start the Interface:**  
    - To run the precompiled version of the interface, navigate to the `ui/deploy` folder and execute:
      ```bash
-     dotnet ui/deploy/DiffusionPipeInterface.dll --urls=http://0.0.0.0:5000
+     cd ui/deploy
+     dotnet DiffusionPipeInterface.dll --urls=http://0.0.0.0:5000
      ```
    - For further customization of the interface, use the Visual Studio project located in `diffusion-pipe/ui/project`, as the version in `ui/deploy` is precompiled.
 
@@ -251,16 +277,18 @@ If you choose to run the interface manually:
 
 ## Linux Initialization Script
 
-The `start-new-ui.sh` script automates the initial setup and launch of the Blazor interface. It performs the following tasks:
+The `easy-install.sh` script automates the initial setup and launch of the Blazor interface. It performs the following tasks:
 
-- Checks if this is the first initialization and, if configured, downloads the models (using environment variables � container only).
-- Configures the necessary environment variables.
-- Executes the Blazor interface (eliminating the need to manually run the startup command).
+- Checks if the `uv` command is installed; if not, installs it using a curl command and sources the uv environment.
+- Creates a virtual environment (using `uv venv`) with Python 3.12 and activates it.
+- Installs required Python packages (including ninja, wheel, setuptools, torch, flash-attn, and dependencies from `requirements.txt`).
+- Downloads and installs .NET 9 (aspnetcore runtime), sets the necessary environment variables, and navigates to `ui/deploy` to launch the interface.
 
 To run the script, simply execute:
 
 ```bash
-./start-new-ui.sh
+chmod +x easy-install.sh
+./easy-install.sh
 ```
 
 ---
@@ -279,7 +307,7 @@ To run the script, simply execute:
   - Integrated WandB support for enhanced training monitoring  
   - Adapter saving that uses the dataset name (plus epoch) instead of a fixed filename  
   - Tensorboard for visualizing training metrics  
-  - Jupyter Lab for file management
+  - Jupyter Lab for file management  
   - Restoring training data and logs if the page is updated during training (partial)
 
 - **Improvements for the Future:**  
@@ -311,3 +339,5 @@ To run the script, simply execute:
   - **Other Configuration Changes:** Some settings differ from the original diffusion-pipe, so be careful when migrating configurations.
 
 For any questions or issues, please open an issue or contact me via [my Civitai profile](https://civitai.com/user/alissonerdx).
+
+---
