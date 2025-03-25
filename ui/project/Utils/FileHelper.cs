@@ -31,20 +31,7 @@ namespace DiffusionPipeInterface.Utils
             }
         }
 
-        public static void ForceSaveCheckpoint(string outputpath)
-        {
-            try
-            {
-                if(!File.Exists(Path.Combine(outputpath, "save")))
-                {
-                    File.WriteAllText(Path.Combine(outputpath, "save"), "111");
-                }
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Error saving file: {ex.Message}");
-            }
-        }
+        
 
         public static void SaveToml(string toml, string path)
         {
@@ -150,6 +137,35 @@ namespace DiffusionPipeInterface.Utils
             }
 
             return datasetConfigurations;
+        }
+
+        public static string? GetLatestFolder(string directory)
+        {
+            var folders = Directory.GetDirectories(directory);
+
+            if (folders.Length == 0)
+            {
+                return null;
+            }
+
+            var latestFolder = folders.OrderByDescending(f => Directory.GetCreationTime(f)).First();
+            return latestFolder;
+        }
+
+        public static string? ForceSave(string outputDir, string fileName)
+        {
+            var latestFolderPath = GetLatestFolder(outputDir);
+
+            if (latestFolderPath != null)
+            {
+                string saveModelPath = Path.Combine(latestFolderPath, fileName);
+
+                File.WriteAllText(saveModelPath, string.Empty);
+
+                return saveModelPath;
+            }
+
+            return null;
         }
     }
 }
