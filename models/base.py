@@ -249,5 +249,5 @@ class BasePipeline:
     def prepare_block_swap_training(self):
         pass
 
-    def prepare_block_swap_inference(self, disable_blocK_swap=False):
+    def prepare_block_swap_inference(self, disable_block_swap=False):
         pass
