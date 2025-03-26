@@ -5,6 +5,7 @@ from collections import defaultdict
 import math
 import os
 import hashlib
+import json
 
 import numpy as np
 import torch
@@ -46,7 +47,7 @@ def process_caption_fn(shuffle_tags=False, caption_prefix=''):
     return fn
 
 
-def _map_and_cache(dataset, map_fn, cache_dir, cache_file_prefix='', new_fingerprint_args=None, regenerate_cache=False, caching_batch_size=1, with_indices=False):
+def _map_and_cache(dataset, map_fn, cache_dir, cache_file_prefix='', new_fingerprint_args=None, regenerate_cache=False, caching_batch_size=1):
     # Do the fingerprinting ourselves, because otherwise map() does it by serializing the map function.
     # That goes poorly when the function is capturing huge models (slow, OOMs, etc).
     new_fingerprint_args = [] if new_fingerprint_args is None else new_fingerprint_args
@@ -63,11 +64,45 @@ def _map_and_cache(dataset, map_fn, cache_dir, cache_file_prefix='', new_fingerp
         remove_columns=dataset.column_names,
         batched=True,
         batch_size=caching_batch_size,
-        with_indices=with_indices,
         num_proc=NUM_PROC,
     )
     dataset.set_format('torch')
     return dataset
+
+
+class TextEmbeddingDataset:
+    def __init__(self, te_dataset):
+        self.te_dataset = te_dataset
+        self.image_file_to_te_idx = defaultdict(list)
+        for i, image_file in enumerate(te_dataset['image_file']):
+            self.image_file_to_te_idx[image_file].append(i)
+
+    def get_text_embeddings(self, image_file, caption_number):
+        return self.te_dataset[self.image_file_to_te_idx[image_file][caption_number]]
+
+
+def _cache_text_embeddings(metadata_dataset, map_fn, i, cache_dir, regenerate_cache, caching_batch_size):
+
+    def flatten_captions(example):
+        image_file_out, caption_out, is_video_out = [], [], []
+        for image_file, captions, is_video in zip(example['image_file'], example['caption'], example['is_video']):
+            for caption in captions:
+                image_file_out.append(image_file)
+                caption_out.append(caption)
+                is_video_out.append(is_video)
+        return {'image_file': image_file_out, 'caption': caption_out, 'is_video': is_video_out}
+
+    flattened_captions = metadata_dataset.map(flatten_captions, batched=True, keep_in_memory=True, remove_columns=metadata_dataset.column_names)
+    te_dataset = _map_and_cache(
+        flattened_captions,
+        map_fn,
+        cache_dir,
+        cache_file_prefix=f'text_embeddings_{i}_',
+        new_fingerprint_args=[i],
+        regenerate_cache=regenerate_cache,
+        caching_batch_size=caching_batch_size,
+    )
+    return TextEmbeddingDataset(te_dataset)
 
 
 # The smallest unit of a dataset. Represents a single size bucket from a single folder of images
@@ -95,46 +130,44 @@ class SizeBucketDataset:
             cache_file_prefix='latents_',
             regenerate_cache=regenerate_cache,
             caching_batch_size=caching_batch_size,
-            with_indices=True,
         )
+        iteration_order = []
+        for example in self.latent_dataset.select_columns(['image_file', 'caption']):
+            image_file = example['image_file']
+            for i, caption in enumerate(example['caption']):
+                iteration_order.append((image_file, caption, i))
         # Shuffle again, since one media file can produce multiple training examples. E.g. video, or maybe
         # in the future data augmentation. Don't need to shuffle text embeddings since those are looked
-        # up by index.
-        self.latent_dataset = self.latent_dataset.shuffle(seed=123)
-        # TODO: should we do dataset.flatten_indices() to make it contiguous on disk again?
-        # self.latent_dataset = self.latent_dataset.flatten_indices(
-        #     cache_file_name=str(self.cache_dir / 'latents_flattened.arrow')
-        # )
+        # up by image file name.
+        shuffle_with_seed(iteration_order, 42)
+        self.iteration_order = iteration_order
+        self.image_file_to_latents_idx = {
+            image_file: i
+            for i, image_file in enumerate(self.latent_dataset['image_file'])
+        }
+
 
     def cache_text_embeddings(self, map_fn, i, regenerate_cache=False, caching_batch_size=1):
         print(f'caching text embeddings: {self.size_bucket}')
-        te_dataset = _map_and_cache(
-            self.metadata_dataset,
-            map_fn,
-            self.cache_dir,
-            cache_file_prefix=f'text_embeddings_{i}_',
-            new_fingerprint_args=[i],
-            regenerate_cache=regenerate_cache,
-            caching_batch_size=caching_batch_size,
-        )
+        te_dataset = _cache_text_embeddings(self.metadata_dataset, map_fn, i, self.cache_dir, regenerate_cache, caching_batch_size)
         self.text_embedding_datasets.append(te_dataset)
 
     def add_text_embedding_dataset(self, te_dataset):
         self.text_embedding_datasets.append(te_dataset)
 
     def __getitem__(self, idx):
-        idx = idx % len(self.latent_dataset)
-        ret = self.latent_dataset[idx]
-        te_idx = ret['te_idx'].item()
+        idx = idx % len(self.iteration_order)
+        image_file, caption, caption_number = self.iteration_order[idx]
+        ret = self.latent_dataset[self.image_file_to_latents_idx[image_file]]
         if DEBUG:
-            print(Path(self.metadata_dataset[te_idx]['image_file']).stem)
+            print(Path(image_file).stem)
         for ds in self.text_embedding_datasets:
-            ret.update(ds[te_idx])
-        ret['caption'] = self.metadata_dataset[te_idx]['caption']
+            ret.update(ds.get_text_embeddings(image_file, caption_number))
+        ret['caption'] = caption
         return ret
 
     def __len__(self):
-        return int(len(self.latent_dataset) * self.num_repeats)
+        return int(len(self.iteration_order) * self.num_repeats)
 
 
 # Logical concatenation of multiple SizeBucketDataset, for the same size bucket. It returns items
@@ -209,15 +242,7 @@ class ARBucketDataset:
 
     def cache_text_embeddings(self, map_fn, i, regenerate_cache=False, caching_batch_size=1):
         print(f'caching text embeddings: {self.ar_frames}')
-        te_dataset = _map_and_cache(
-            self.metadata_dataset,
-            map_fn,
-            self.cache_dir,
-            cache_file_prefix=f'text_embeddings_{i}_',
-            new_fingerprint_args=[i],
-            regenerate_cache=regenerate_cache,
-            caching_batch_size=caching_batch_size,
-        )
+        te_dataset = _cache_text_embeddings(self.metadata_dataset, map_fn, i, self.cache_dir, regenerate_cache, caching_batch_size)
         for size_bucket_dataset in self.size_buckets:
             size_bucket_dataset.add_text_embedding_dataset(te_dataset)
 
@@ -296,12 +321,11 @@ class DirectoryDataset:
         caption_files = []
         mask_files = []
         for file in files:
-            if not file.is_file() or file.suffix == '.txt' or file.suffix == '.npz':
+            if not file.is_file() or file.suffix == '.txt' or file.suffix == '.npz' or file.suffix == '.json':
                 continue
             image_file = file
             caption_file = image_file.with_suffix('.txt')
             if not os.path.exists(caption_file):
-                logger.warning(f'Image file {image_file} does not have corresponding caption file.')
                 caption_file = ''
             image_files.append(str(image_file))
             caption_files.append(str(caption_file))
@@ -377,20 +401,37 @@ class DirectoryDataset:
         directory_config.setdefault('num_repeats', dataset_config.get('num_repeats', 1))
 
     def _metadata_map_fn(self):
+        captions_file = self.path / 'captions.json'
+        if captions_file.exists():
+            with open(captions_file) as f:
+                caption_data = json.load(f)
+        else:
+            caption_data = None
+
         def fn(example):
             # batch size always 1
             caption_file = example['caption_file'][0]
             image_file = example['image_file'][0]
-            if not caption_file:
-                caption = ''
-            else:
+            captions = None
+            if caption_data is not None:
+                captions = caption_data.get(Path(image_file).name, None)
+                if captions is None:
+                    logger.warning(f'Image file {image_file} does not have an entry in captions.json')
+                else:
+                    assert isinstance(captions, list), 'captions.json must contain lists of captions'
+            if captions is None and caption_file:
                 with open(caption_file) as f:
-                    caption = f.read().strip()
-            if self.directory_config['shuffle_tags']:
-                tags = [tag.strip() for tag in caption.split(',')]
-                random.shuffle(tags)
-                caption = ', '.join(tags)
-            caption = self.directory_config['caption_prefix'] + caption
+                    captions = [f.read().strip()]
+            if captions is None:
+                captions = ['']
+                logger.warning(f'Cound not find caption for {image_file}. Using empty caption.')
+            for i, caption in enumerate(captions):
+                if self.directory_config['shuffle_tags']:
+                    tags = [tag.strip() for tag in caption.split(',')]
+                    random.shuffle(tags)
+                    caption = ', '.join(tags)
+                caption = self.directory_config['caption_prefix'] + caption
+                captions[i] = caption
             empty_return = {'image_file': [], 'mask_file': [], 'caption': [], 'ar_bucket': [], 'size_bucket': [], 'is_video': []}
 
             image_file = Path(image_file)
@@ -438,11 +479,12 @@ class DirectoryDataset:
             return {
                 'image_file': [str(image_file)],
                 'mask_file': [example['mask_file'][0]],
-                'caption': [caption],
+                'caption': [captions],
                 'ar_bucket': [ar_bucket],
                 'size_bucket': [size_bucket],
                 'is_video': [is_video]
             }
+
         return fn
 
     def _find_closest_ar_bucket(self, log_ar, frames, is_video):
@@ -658,18 +700,20 @@ def _cache_fn(datasets, queue, preprocess_media_file_fn, num_text_encoders, rege
     for ds in datasets:
         ds.cache_metadata(regenerate_cache=regenerate_cache)
 
-    def latents_map_fn(example, indices):
+    def latents_map_fn(example):
         first_size_bucket = example['size_bucket'][0]
         tensors_and_masks = []
-        te_idx = []
-        for idx, path, mask_path, size_bucket in zip(indices, example['image_file'], example['mask_file'], example['size_bucket']):
+        image_files = []
+        captions = []
+        for path, mask_path, size_bucket, caption in zip(example['image_file'], example['mask_file'], example['size_bucket'], example['caption']):
             assert size_bucket == first_size_bucket
             items = preprocess_media_file_fn(path, mask_path, size_bucket)
             tensors_and_masks.extend(items)
-            te_idx.extend([idx] * len(items))
+            image_files.extend([path] * len(items))
+            captions.extend([caption] * len(items))
 
         if len(tensors_and_masks) == 0:
-            return {'latents': [], 'mask': [], 'te_idx': []}
+            return {'latents': [], 'mask': [], 'image_file': [], 'caption': []}
 
         caching_batch_size = len(example['image_file'])
         results = defaultdict(list)
@@ -684,8 +728,9 @@ def _cache_fn(datasets, queue, preprocess_media_file_fn, num_text_encoders, rege
         # concatenate the list of tensors at each key into one batched tensor
         for k, v in results.items():
             results[k] = torch.cat(v)
-        results['te_idx'] = te_idx
+        results['image_file'] = image_files
         results['mask'] = [t[1] for t in tensors_and_masks]
+        results['caption'] = captions
         return results
 
     for ds in datasets:
@@ -696,6 +741,7 @@ def _cache_fn(datasets, queue, preprocess_media_file_fn, num_text_encoders, rege
             parent_conn, child_conn = mp.Pipe(duplex=False)
             queue.put((text_encoder_idx+1, example['caption'], example['is_video'], child_conn))
             result = parent_conn.recv()  # dict
+            result['image_file'] = example['image_file']
             return result
         for ds in datasets:
             ds.cache_text_embeddings(text_embedding_map_fn, text_encoder_idx+1, regenerate_cache=regenerate_cache, caching_batch_size=caching_batch_size)

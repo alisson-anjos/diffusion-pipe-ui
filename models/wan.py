@@ -381,6 +381,8 @@ class WanPipeline(BasePipeline):
         with open(self.original_model_config_path) as f:
             json_config = json.load(f)
         self.i2v = (json_config['model_type'] == 'i2v')
+        if self.i2v:
+            self.name = 'wan_i2v'
         model_dim = json_config['dim']
         if not self.i2v and model_dim == 1536:
             wan_config = wan_configs.t2v_1_3B
