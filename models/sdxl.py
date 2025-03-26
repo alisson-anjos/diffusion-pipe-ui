@@ -387,6 +387,10 @@ class SDXLPipeline(BasePipeline):
             torch_dtype=self.model_config['dtype'],
             add_watermarker=False,
         )
+        # The two tokenizers should be the same. After all, the two sets of text embeddings are concatenated token-by-token.
+        # But in rare cases, the token count can differ (I've only seen off by 1), and this causes a failure. So work around it
+        # by forcing the tokenizers to be the same object.
+        self.diffusers_pipeline.tokenizer_2 = self.diffusers_pipeline.tokenizer
         self.diffusers_pipeline.scheduler = diffusers.DDPMScheduler(
             beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", num_train_timesteps=1000, clip_sample=False
         )

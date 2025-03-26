@@ -245,3 +245,9 @@ class BasePipeline:
 
     def enable_block_swap(self, blocks_to_swap):
         raise NotImplementedError('Block swapping is not implemented for this model')
+
+    def prepare_block_swap_training(self):
+        pass
+
+    def prepare_block_swap_inference(self, disable_block_swap=False):
+        pass
