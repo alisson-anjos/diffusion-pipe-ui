@@ -48,11 +48,6 @@ builder.Services.AddSingleton<FolderMonitorService>();
 builder.Services.AddSingleton<ProcessManager>();
 builder.Services.AddSingleton<InterfaceControlViewModel>();
 
-builder.Services.AddHttpClient("MyApp", client =>
-{
-    client.BaseAddress = new Uri("http://localhost:5000/");
-});
-
 builder.Services.AddScoped(sp => sp.GetRequiredService<IHttpClientFactory>().CreateClient("MyApp"));
 
 builder.Services.Configure<AppSettingsConfiguration>(builder.Configuration.GetSection("Configurations"));
@@ -62,11 +57,23 @@ builder.Services.AddRazorPages(options =>
     options.Conventions.ConfigureFilter(new IgnoreAntiforgeryTokenAttribute());
 
 });
-builder.Services.AddAntiforgery(options => options.SuppressXFrameOptionsHeader = true);
+
+builder.Services.AddAntiforgery(options => {
+    options.Cookie.SameSite = SameSiteMode.None;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+    options.SuppressXFrameOptionsHeader = true;
+});
 
 var appSettings = builder.Configuration.GetSection("Configurations").Get<AppSettingsConfiguration>()!;
 
 appSettings.EnsureDirectoriesExist();
+
+var serverUrl = appSettings.ServerUrlBase ?? "http://localhost:5000";
+
+builder.Services.AddHttpClient("MyApp", client =>
+{
+    client.BaseAddress = new Uri(serverUrl);
+});
 
 var app = builder.Build();
 

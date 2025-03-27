@@ -16,6 +16,7 @@ namespace DiffusionPipeInterface.Models
         public string EnvPath { get; set; } = null!;
         public string DiffusionPipePath { get; set; } = null!;
         public string StartTrainingCommand { get; set; } = null!;
+        public string ServerUrlBase { get;set; } = null!;
         public AppSettingsModelsConfiguration Models { get; set; } = new();
     }
 
