@@ -9,9 +9,11 @@ using Microsoft.AspNetCore.Http.Features;
 using DiffusionPipeInterface.ViewModels;
 using System.IO.Compression;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.DataProtection;
 
 var builder = WebApplication.CreateBuilder(args);
-var connectionString = builder.Configuration.GetConnectionString("app");
+var connectionString = builder.Configuration.GetConnectionString("App");
+var keyConnectionString = builder.Configuration.GetConnectionString("Key");
 
 // Add MudBlazor services
 builder.Services.AddMudServices();
@@ -48,21 +50,13 @@ builder.Services.AddSingleton<FolderMonitorService>();
 builder.Services.AddSingleton<ProcessManager>();
 builder.Services.AddSingleton<InterfaceControlViewModel>();
 
+var keysDirectory = new DirectoryInfo(Path.Combine(AppContext.BaseDirectory, "keys"));
+Directory.CreateDirectory(keysDirectory.FullName);
+builder.Services.AddDataProtection().PersistKeysToFileSystem(keysDirectory);
+
 builder.Services.AddScoped(sp => sp.GetRequiredService<IHttpClientFactory>().CreateClient("MyApp"));
 
 builder.Services.Configure<AppSettingsConfiguration>(builder.Configuration.GetSection("Configurations"));
-
-builder.Services.AddRazorPages(options =>
-{
-    options.Conventions.ConfigureFilter(new IgnoreAntiforgeryTokenAttribute());
-
-});
-
-builder.Services.AddAntiforgery(options => {
-    options.Cookie.SameSite = SameSiteMode.None;
-    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
-    options.SuppressXFrameOptionsHeader = true;
-});
 
 var appSettings = builder.Configuration.GetSection("Configurations").Get<AppSettingsConfiguration>()!;
 
@@ -73,6 +67,17 @@ var serverUrl = appSettings.ServerUrlBase ?? "http://localhost:5000";
 builder.Services.AddHttpClient("MyApp", client =>
 {
     client.BaseAddress = new Uri(serverUrl);
+});
+
+builder.Services.AddRazorPages(options =>
+{
+    options.Conventions.ConfigureFilter(new IgnoreAntiforgeryTokenAttribute());
+});
+
+builder.Services.AddAntiforgery(options => {
+    options.Cookie.SameSite = SameSiteMode.None;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+    options.SuppressXFrameOptionsHeader = true;
 });
 
 var app = builder.Build();
@@ -122,7 +127,6 @@ app.MapGet("/download-config", (string filePath) =>
 
     return Results.File(configPath, "application/toml", filename);
 });
-
 
 app.MapPost("/prepare-download", async (HttpContext context) =>
 {
