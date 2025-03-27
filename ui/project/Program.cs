@@ -8,12 +8,14 @@ using DiffusionPipeInterface.Services;
 using Microsoft.AspNetCore.Http.Features;
 using DiffusionPipeInterface.ViewModels;
 using System.IO.Compression;
+using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
 var connectionString = builder.Configuration.GetConnectionString("app");
 
 // Add MudBlazor services
 builder.Services.AddMudServices();
+
 
 // Add services to the container.
 builder.Services.AddRazorComponents(opt =>
@@ -55,6 +57,13 @@ builder.Services.AddScoped(sp => sp.GetRequiredService<IHttpClientFactory>().Cre
 
 builder.Services.Configure<AppSettingsConfiguration>(builder.Configuration.GetSection("Configurations"));
 
+builder.Services.AddRazorPages(options =>
+{
+    options.Conventions.ConfigureFilter(new IgnoreAntiforgeryTokenAttribute());
+
+});
+builder.Services.AddAntiforgery(options => options.SuppressXFrameOptionsHeader = true);
+
 var appSettings = builder.Configuration.GetSection("Configurations").Get<AppSettingsConfiguration>()!;
 
 appSettings.EnsureDirectoriesExist();
@@ -71,8 +80,14 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.Use(async (context, next) =>
+{
+    context.Response.Headers["Content-Security-Policy"] = "frame-ancestors 'self' *";
+    context.Response.Headers["X-Frame-Options"] = "ALLOWALL";
+    await next();
+});
 
-//app.UseAntiforgery();
+app.UseAntiforgery();
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
