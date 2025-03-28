@@ -1,5 +1,51 @@
-﻿@page "/modelmanager"
+﻿@page "/captioner"
+@using DiffusionPipeInterface.Utils
+
+<MudContainer Fixed="true">
+    <MudGrid Spacing="10">
+        <MudItem xs="12">
+            <MudTextField T="string" Label="System Context" Typo="Typo.body2" Variant="Variant.Outlined" Value="@Consts.CAPTIONER_SYSTEM_CONTEXT" Lines="5" MaxLines="Int32.MaxValue" />
+        </MudItem>
+        <MudItem xs="12">
+            <MudTextField T="string" Label="Prompt" Typo="Typo.body2" Variant="Variant.Outlined" Value="@Consts.CAPTIONER_PROMPT" Lines="20" MaxLines="Int32.MaxValue" />
+        </MudItem>
+        <MudItem xs="12">
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudSelect T=string Required Label="Models" FullWidth="true" Variant="Variant.Outlined">
+                        @if (models != null)
+                        {
+                            foreach (var item in models)
+                            {
+                                <MudSelectItem Value="@item">@item</MudSelectItem>
+                            }
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12"><MudTextField T="string" Label="Custom Model" Variant="Variant.Outlined"></MudTextField></MudItem>
+                <MudItem xs="3"><MudNumericField class="" T="int" Required Label="Max New Tokens" Variant="Variant.Outlined"></MudNumericField></MudItem>
+                <MudItem xs="3"><MudNumericField T="float" Required Label="Temperature" Variant="Variant.Outlined"></MudNumericField></MudItem>
+                <MudItem xs="3"><MudNumericField T="float" Required Label="Top p" Variant="Variant.Outlined"></MudNumericField></MudItem>
+                <MudItem xs="3"><MudNumericField T="float" Required Label="Top k" Variant="Variant.Outlined"></MudNumericField></MudItem>
+                <MudItem xs="3"><MudNumericField T="float" Required Label="Repetition Penalty" Variant="Variant.Outlined"></MudNumericField></MudItem>
+                <MudItem xs="3"><MudNumericField T="int" Required Label="Seed" Variant="Variant.Outlined"></MudNumericField></MudItem>
+                <MudItem xs="4"><MudSwitch T="bool" Color="Color.Primary" Label="Low CPU Mem Usage" /></MudItem>
+                <MudDivider />
+                <MudItem xs="3"><MudNumericField T="int" Required Label="FPS" Variant="Variant.Outlined"></MudNumericField></MudItem>
+                <MudItem xs="3"><MudNumericField T="int" Required Label="Min Frames" Variant="Variant.Outlined"></MudNumericField></MudItem>
+                <MudItem xs="3"><MudNumericField T="int" Required Label="Max Frames" Variant="Variant.Outlined"></MudNumericField></MudItem>
+                <MudItem xs="3"><MudNumericField T="int" Required Label="Frame Factor" Variant="Variant.Outlined"></MudNumericField></MudItem>
+                <MudItem xs="3"><MudNumericField T="int" Required Label="Min Pixels" Variant="Variant.Outlined"></MudNumericField></MudItem>
+                <MudItem xs="3"><MudNumericField T="int" Required Label="Max Pixels" Variant="Variant.Outlined"></MudNumericField></MudItem>
+            </MudGrid>
+        </MudItem>
+    </MudGrid>
+</MudContainer>
 
 @code {
+    private List<string> models = new List<string>
+    {
+        "Qwen/Qwen2.5-VL-7B-Instruct"
+    };
 
 }

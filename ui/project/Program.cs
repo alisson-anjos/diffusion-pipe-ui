@@ -75,7 +75,7 @@ builder.Services.AddRazorPages(options =>
 });
 
 builder.Services.AddAntiforgery(options => {
-    options.Cookie.SameSite = SameSiteMode.None;
+    options.Cookie.SameSite = SameSiteMode.Lax;
     options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
     options.SuppressXFrameOptionsHeader = true;
 });
@@ -94,7 +94,7 @@ app.UseHttpsRedirection();
 
 app.Use(async (context, next) =>
 {
-    context.Response.Headers["Content-Security-Policy"] = "frame-ancestors 'self' *";
+    context.Response.Headers["Content-Security-Policy"] = "frame-ancestors 'self' 'null' http: https:";
     context.Response.Headers["X-Frame-Options"] = "ALLOWALL";
     await next();
 });
