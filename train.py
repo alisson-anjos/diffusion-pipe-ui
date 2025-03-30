@@ -121,16 +121,26 @@ def print_model_info(model):
             print()
 
 
+# Need to preload all micro batches since pulling from the dataloader does IPC between the
+# first and last stage. Can't do that during the train or inference pipeline schedule execution
+# because it conflicts with the send / recv steps.
+def get_data_iterator_for_step(dataloader, engine, num_micro_batches=None):
+    num_micro_batches = num_micro_batches or engine.micro_batches
+    if not (engine.is_first_stage() or engine.is_last_stage()):
+        return None
+    dataloader_iter = iter(dataloader)
+    items = [next(dataloader_iter) for _ in range(num_micro_batches)]
+    return iter(items)
+
+
 def evaluate_single(model_engine, eval_dataloader, eval_gradient_accumulation_steps, quantile, pbar=None):
     eval_dataloader.set_eval_quantile(quantile)
-    orig_micro_batches = model_engine.micro_batches
-    model_engine.micro_batches = eval_gradient_accumulation_steps
-    iterator = iter(eval_dataloader)
     total_loss = 0
     count = 0
     while True:
         model_engine.reset_activation_shape()
-        loss = model_engine.eval_batch(iterator).item()
+        iterator = get_data_iterator_for_step(eval_dataloader, model_engine, num_micro_batches=eval_gradient_accumulation_steps)
+        loss = model_engine.eval_batch(iterator, num_micro_batches=eval_gradient_accumulation_steps).item()
         eval_dataloader.sync_epoch()
         if pbar:
             pbar.update(1)
@@ -140,7 +150,6 @@ def evaluate_single(model_engine, eval_dataloader, eval_gradient_accumulation_st
             break
 
     eval_dataloader.reset()
-    model_engine.micro_batches = orig_micro_batches
     return total_loss / count
 
 
@@ -574,10 +583,10 @@ if __name__ == '__main__':
         optimizer=get_optimizer,
         config=ds_config,
     )
-    if model_engine.is_pipe_parallel:
-        grid = model_engine.grid
-        model_engine.first_last_stage_group = dist.new_group(ranks=[grid.pp_group[0], grid.pp_group[-1]])
     model.model_engine = model_engine
+    if model_engine.is_pipe_parallel:
+         grid = model_engine.grid
+         model_engine.first_last_stage_group = dist.new_group(ranks=[grid.pp_group[0], grid.pp_group[-1]])
 
     lr_scheduler = torch.optim.lr_scheduler.ConstantLR(optimizer, factor=1.0)
     if config['warmup_steps'] > 0:
@@ -629,7 +638,6 @@ if __name__ == '__main__':
         for pg in optimizer.param_groups:
             pg['lr'] = config['force_constant_lr']
 
-    model_engine.set_dataloader(train_dataloader)
     steps_per_epoch = len(train_dataloader) // model_engine.gradient_accumulation_steps()
     model_engine.total_steps = steps_per_epoch * config['epochs']
     
@@ -657,7 +665,8 @@ if __name__ == '__main__':
     while True:
         #empty_cuda_cache()
         model_engine.reset_activation_shape()
-        loss = model_engine.train_batch().item()
+        iterator = get_data_iterator_for_step(train_dataloader, model_engine)
+        loss = model_engine.train_batch(iterator).item()
         epoch_loss += loss
         num_steps += 1
         train_dataloader.sync_epoch()
