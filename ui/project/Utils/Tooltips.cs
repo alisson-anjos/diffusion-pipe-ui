@@ -108,5 +108,10 @@ The semantics of this are the same as sd-scripts: num_repeats=1 means one epoch 
         public const string ArBucketsSubDataset = @"Overrides the AR Buckets set in the general settings.";
 
         public const string FrameBucketsSubDataset = @"Overrides the Frame Buckets set in the general settings.";
+
+        public const string ResumeFromSpecificCheckpoint = @"You can also specify a specific checkpoint folder name after the flag to resume from that particular checkpoint (e.g. --resume_from_checkpoint ""20250212_07-06-40""). 
+This option is particularly useful if you have run multiple training sessions with different datasets and want to resume from a specific training folder.
+Please note that resuming from checkpoint uses the config file on the command line, not the config file saved into the output directory. 
+You are responsible for making sure that the config file you pass in matches what was previously used.";
     }
 }

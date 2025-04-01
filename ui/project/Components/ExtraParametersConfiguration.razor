@@ -1,0 +1,53 @@
+﻿@using DiffusionPipeInterface.ViewModels
+@using DiffusionPipeInterface.Utils
+@using Enums
+@inject IDialogService DialogService
+@inject IJSRuntime JSRuntime
+
+<MudCard Outlined="true" Elevation="3" Class="my-2">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <MudText Typo="Typo.h6">Extra Configurations</MudText>
+        </CardHeaderContent>
+       @*  <CardHeaderActions>
+            <MudIconButton Icon="@Icons.Material.Outlined.Refresh" Color="Color.Default" />
+        </CardHeaderActions> *@
+    </MudCardHeader>
+    <MudCardContent>
+        <MudGrid>
+            <MudItem xs="4">
+                <MudSwitch @bind-Value="TrainConfiguration.ResumeFromCheckpoint" Label="Resume from checkpoint" Disabled="Locked" Color="Color.Primary"></MudSwitch>
+            </MudItem>
+            <MudItem xs="8">
+                <MudTextField @bind-Value="TrainConfiguration.ResumeFromSpecificCheckpoint" Label="Specify the name to the checkpoint (empty = use the last one)" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.ResumeFromSpecificCheckpoint))></MudTextField>
+            </MudItem>
+        </MudGrid>
+
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public TrainConfigurationViewModel TrainConfiguration { get; set; } = null!;
+
+    [Parameter]
+    public bool Locked { get; set; } = false;
+
+    private Task OpenDialogAsync(string message)
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large };
+
+        var parameters = new DialogParameters<InfoDialog>
+        {
+            { x => x.Message, message }
+        };
+
+        return DialogService.ShowAsync<InfoDialog>("Info", parameters, options);
+    }
+
+    private void RedirectToLink(string link)
+    {
+        JSRuntime.InvokeVoidAsync("openNewTab", link);
+    }
+}

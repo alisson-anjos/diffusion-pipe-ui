@@ -58,6 +58,9 @@ git submodule update
 
 ## Updates
 
+- **2025-04-01 (add extra configurations)
+  - Added the Resume from checkpoint field
+
 - **2025-03-19 (new interface with support for all models)**
   - New interface developed in Blazor (dotnet).
   - Settings (paths, training commands, model downloads, etc.) are defined in the `appsettings.json` file (located at `diffusion-pipe/ui/deploy/appsettings.json`).

@@ -51,6 +51,9 @@
                         </MudItem>
                     }
                     <MudItem xs="12">
+                        <ExtraParametersConfiguration Locked="InterfaceControl.TrainingLocked" TrainConfiguration="TrainConfiguration"></ExtraParametersConfiguration>
+                    </MudItem>
+                    <MudItem xs="12">
                         <MudCard>
                             <MudCardHeader>
                                 <CardHeaderContent>
@@ -339,6 +342,18 @@
                     Console.WriteLine($"DPI - NUM_GPUS: {numGpusInt}");
                     string pattern = @"--num_gpus\s*=\s*\S+";
                     command = Regex.Replace(command, pattern, $"--num_gpus={numGpusInt}");
+                }
+
+                if(TrainConfiguration.ResumeFromCheckpoint)
+                {
+                    if (!string.IsNullOrEmpty(TrainConfiguration.ResumeFromSpecificCheckpoint))
+                    {
+                        command += $" --resume_from_checkpoint \"{TrainConfiguration.ResumeFromSpecificCheckpoint}\"";
+                    }
+                    else
+                    {
+                        command += $@" --resume_from_checkpoint";
+                    }
                 }
 
                 if (!Directory.Exists(TrainConfiguration.OutputDir))
