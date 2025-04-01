@@ -279,7 +279,7 @@ class FluxPipeline(BasePipeline):
         latents = rearrange(latents, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2)
 
         if mask is not None:
-            mask = mask.unsqueeze(1)  # make mask (bs, 1, img_h, img_w)
+            mask = mask.unsqueeze(1).expand((-1, c, -1, -1))  # make mask (bs, c, img_h, img_w)
             mask = F.interpolate(mask, size=(h, w), mode='nearest-exact')  # resize to latent spatial dimension
             mask = rearrange(mask, "b c (h ph) (w pw) -> b (h w) (c ph pw)", ph=2, pw=2)
 
