@@ -15,7 +15,7 @@ namespace DiffusionPipeInterface.Utils
 {
     public static class Extensions
     {
-        public static string GetDescription(this Enum enumValue)
+       public static string GetDescription(this Enum enumValue)
         {
             var field = enumValue.GetType().GetField(enumValue.ToString());
             if (field == null)

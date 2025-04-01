@@ -8,7 +8,7 @@
 
 <MudTabs Outlined="true" Position="Position.Left" Rounded="true" Border="true"
          ApplyEffectsToContainer="true" Class="mt-8" PanelClass="pa-6">
-    <MudTabPanel Text="Dataset Directory">
+    <MudTabPanel Text="Dataset Directory" OnClick="() => { DatasetDirectoryFileStructure = Refresh(DatasetDirectoryPath); }">
         <MudStack>
              @DatasetDirectoryPath
             <MudTreeView T="FileItemViewModel" Hover SelectionMode="SelectionMode.MultiSelection" TriState="false" Color="Color.Tertiary" MaxHeight="500px">
@@ -27,7 +27,7 @@
             </MudToolBar>
         </MudStack>
     </MudTabPanel>
-    <MudTabPanel Text="Models Directory">
+    <MudTabPanel Text="Models Directory" OnClick="() => { ModelsDirectoryFileStructure = Refresh(ModelsDirectoryPath); }">
         <MudStack>
             @ModelsDirectoryPath
             <MudTreeView T="FileItemViewModel" Hover SelectionMode="SelectionMode.MultiSelection" TriState="false" Color="Color.Tertiary" MaxHeight="500px">
@@ -45,7 +45,7 @@
         </MudStack>
 
     </MudTabPanel>
-    <MudTabPanel Text="Configs Directory">
+    <MudTabPanel Text="Configs Directory" OnClick="() => { ConfigsDirectoryStructure = Refresh(ConfigsDirectoryPath); }">
         <MudStack>
             @ConfigsDirectoryPath
             <MudTreeView T="FileItemViewModel" Hover SelectionMode="SelectionMode.MultiSelection" TriState="false" Color="Color.Tertiary" MaxHeight="500px">
@@ -64,7 +64,7 @@
             </MudToolBar>
         </MudStack>
     </MudTabPanel>
-    <MudTabPanel Text="Outputs Directory">
+    <MudTabPanel Text="Outputs Directory" OnClick="() => { OutputsDirectoryStructure = Refresh(OutputsDirectoryPath); }">
         <MudStack>
             @OutputsDirectoryPath
             <MudTreeView T="FileItemViewModel" Hover SelectionMode="SelectionMode.MultiSelection" TriState="false" Color="Color.Tertiary" MaxHeight="500px">

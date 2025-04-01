@@ -97,6 +97,12 @@ namespace DiffusionPipeInterface.ViewModels
         [DataMember(Name = "blocks_to_swap")]
         public int? BlocksToSwap { get; set; } = null;
 
+        [IgnoreDataMember]
+        public bool ResumeFromCheckpoint { get; set; } = false;
+
+        [IgnoreDataMember]
+        public string? ResumeFromSpecificCheckpoint { get; set; }
+
         [DataMember(Name = "model")]
         public virtual ModelConfigurationViewModel ModelConfiguration { get; set; } = new ModelConfigurationViewModel();
 

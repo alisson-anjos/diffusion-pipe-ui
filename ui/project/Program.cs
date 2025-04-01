@@ -10,14 +10,14 @@ using DiffusionPipeInterface.ViewModels;
 using System.IO.Compression;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Authentication.Cookies;
 
 var builder = WebApplication.CreateBuilder(args);
-var connectionString = builder.Configuration.GetConnectionString("App");
+    var connectionString = builder.Configuration.GetConnectionString("App");
 var keyConnectionString = builder.Configuration.GetConnectionString("Key");
 
 // Add MudBlazor services
 builder.Services.AddMudServices();
-
 
 // Add services to the container.
 builder.Services.AddRazorComponents(opt =>
@@ -74,12 +74,6 @@ builder.Services.AddRazorPages(options =>
     options.Conventions.ConfigureFilter(new IgnoreAntiforgeryTokenAttribute());
 });
 
-builder.Services.AddAntiforgery(options => {
-    options.Cookie.SameSite = SameSiteMode.Lax;
-    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
-    options.SuppressXFrameOptionsHeader = true;
-});
-
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -90,20 +84,24 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
 
-app.Use(async (context, next) =>
-{
-    context.Response.Headers["Content-Security-Policy"] = "frame-ancestors 'self' 'null' http: https:";
-    context.Response.Headers["X-Frame-Options"] = "ALLOWALL";
-    await next();
-});
+//app.UseHttpsRedirection();
 
 app.UseAntiforgery();
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+     .AddInteractiveServerRenderMode(o => o.ContentSecurityFrameAncestorsPolicy = null);
+
+
+app.Use(async (context, next) =>
+{
+    // Remove o header X-Frame-Options, se presente.
+    context.Response.Headers.Remove("X-Frame-Options");
+    // Define o header Content-Security-Policy com uma diretiva permissiva.
+    context.Response.Headers.Add("Content-Security-Policy", "frame-ancestors *");
+    await next();
+});
 
 app.MapGet("/download", (string file) =>
 {
