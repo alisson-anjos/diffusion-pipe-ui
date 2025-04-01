@@ -58,7 +58,7 @@ git submodule update
 
 ## Updates
 
-- **2025-04-01 (add extra configurations)
+- **2025-04-01 (add extra configurations)**
   - Added the Resume from checkpoint field
 
 - **2025-03-19 (new interface with support for all models)**
