@@ -96,6 +96,8 @@ namespace DiffusionPipeInterface.ViewModels
         [IgnoreDataMember]
         public List<string>? TotalFilesUploaded { get; set; } = null;
 
+
+
         //[IgnoreDataMember]
         //public IReadOnlyList<IBrowserFile>? Files { get; set; }
 

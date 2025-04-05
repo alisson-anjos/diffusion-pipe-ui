@@ -2,15 +2,14 @@
 # Exit the script if any error occurs
 set -e
 
-# 1. Check if the "uv" command is installed; if not, install it using the curl command
+# 1. Install uv if not available
 if ! command -v uv &> /dev/null; then
     echo "uv command not found. Installing uv..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
-    # Source the uv environment variables
-    source $HOME/.local/bin/env
+    export PATH="$HOME/.local/bin:$PATH"
 fi
 
-# 2. Create a virtual environment "venv" using uv with Python 3.12
+# 2. Create virtual environment
 echo "Creating the virtual environment 'venv' with Python 3.12 using uv..."
 uv venv venv --python 3.12
 
@@ -18,13 +17,13 @@ uv venv venv --python 3.12
 echo "Activating the virtual environment 'venv'..."
 source venv/bin/activate
 
-# 4. Install packages using uv pip
+# 4. Install packages
 echo "Installing packages using uv pip..."
 uv pip install ninja wheel setuptools
 uv pip install torch
 uv pip install --no-build-isolation flash-attn
 uv pip install -r requirements.txt
-uv pip install -U "huggingface_hub[cli]" --system
+uv pip install -U "huggingface_hub[cli]"
 
 # 5. Install .NET 9
 echo "Downloading and installing .NET 9..."

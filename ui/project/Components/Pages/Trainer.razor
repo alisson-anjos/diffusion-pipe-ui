@@ -21,6 +21,7 @@
 @inject FolderMonitorService FolderMonitorService
 @inject InterfaceControlViewModel InterfaceControl
 @inject IDialogService DialogService
+@inject ReconnectionService ReconnectionService
 
 @implements IDisposable
 
@@ -123,7 +124,16 @@
     {
         config = Configuration.CurrentValue;
         FolderMonitorService.OnNewSubfolderCreated += HandleNewFile;
+
+        ReconnectionService.Reconnected += OnReconnected;
     }
+
+    private async void OnReconnected()
+    {
+        await CheckProcessStatusAsync();
+        Console.WriteLine("Reconnected! State restored.");
+    }
+
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -372,6 +382,7 @@
             catch (Exception ex)
             {
                 outputText += $"Error: {ex.Message}\n";
+                isTraining = false;
             }
         }
     }

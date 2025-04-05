@@ -11,6 +11,8 @@ using System.IO.Compression;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using DiffusionPipeInterface.Hubs.Handler;
+using Microsoft.AspNetCore.Components.Server.Circuits;
 
 var builder = WebApplication.CreateBuilder(args);
     var connectionString = builder.Configuration.GetConnectionString("App");
@@ -49,6 +51,8 @@ builder.Services.AddDbContextFactory<AppDbContext>(options => options.UseSqlite(
 builder.Services.AddSingleton<FolderMonitorService>();
 builder.Services.AddSingleton<ProcessManager>();
 builder.Services.AddSingleton<InterfaceControlViewModel>();
+builder.Services.AddSingleton<ReconnectionService>();
+builder.Services.AddSingleton<CircuitHandler, CustomCircuitHandler>();
 
 var keysDirectory = new DirectoryInfo(Path.Combine(AppContext.BaseDirectory, "keys"));
 Directory.CreateDirectory(keysDirectory.FullName);
