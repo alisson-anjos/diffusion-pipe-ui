@@ -73,7 +73,7 @@
                                         <MudButton Variant="Variant.Outlined" Color="Color.Default" Disabled="!isTraining" FullWidth="true" OnClick="ForceSaveCheckpoint">Force Save Checkpoint</MudButton>
                                     </MudItem>
                                     <MudItem xs="12">
-                                        <MudPaper Class=" pa-4 align-start d-flex" Outlined="true">
+                                        <MudPaper Class=" pa-4 justify-space-between d-flex" Outlined="true">
                                             <MudPaper Class="pa-3" Elevation="6">Steps: @InterfaceControl.CurrentStep / @InterfaceControl.TotalSteps</MudPaper>
                                             <MudPaper Class="pa-3" Elevation="6">Steps per Epoch: @InterfaceControl.StepsPerEpoch</MudPaper>
                                             <MudPaper Class="pa-3" Elevation="6">Epochs: @InterfaceControl.CurrentEpoch / @TrainConfiguration.Epochs</MudPaper>
@@ -156,84 +156,20 @@
     {
         if (e.ProcessId == processId)
         {
-            if (config.UsingDiffusionPipeFromFork)
-            {
-                if (!string.IsNullOrEmpty(e.Log) && e.Log.Contains("Total steps:"))
-                {
-                    string[] totalStepsParts = e.Log.Split(new string[] { "Total steps:" }, StringSplitOptions.None);
-                    if (totalStepsParts.Length > 1)
-                    {
-                        string totalStepsString = totalStepsParts[1].Trim();
-                        if (int.TryParse(totalStepsString, out int totalSteps))
-                        {
-                            InterfaceControl.TotalSteps = totalSteps;
-                        }
-                        else
-                        {
-                            Console.WriteLine($"Error parsing total steps value: '{totalStepsString}'");
-                        }
-                    }
-                }
-
-                if (!string.IsNullOrEmpty(e.Log) && e.Log.Contains("Steps per epoch:"))
-                {
-                    string[] stepsPerEpochParts = e.Log.Split(new string[] { "Steps per epoch:" }, StringSplitOptions.None);
-                    if (stepsPerEpochParts.Length > 1)
-                    {
-                        string stepsPerEpochString = stepsPerEpochParts[1].Trim();
-                        if (int.TryParse(stepsPerEpochString, out int stepsPerEpoch))
-                        {
-                            InterfaceControl.StepsPerEpoch = stepsPerEpoch;
-                        }
-                        else
-                        {
-                            Console.WriteLine($"Error parsing steps per epoch value: '{stepsPerEpochString}'");
-                        }
-                    }
-                }
-            }
-
-            if (!string.IsNullOrEmpty(e.Log) && e.Log.Contains("step="))
-            {
-                string[] stepParts = e.Log.Split(new string[] { "step=" }, StringSplitOptions.None);
-                if (stepParts.Length > 1)
-                {
-                    string[] valueParts = stepParts[1].Split(',');
-                    if (valueParts.Length > 0)
-                    {
-                        string stepString = valueParts[0].Trim();
-                        if (int.TryParse(stepString, out int currentStep))
-                        {
-                            InterfaceControl.CurrentStep = currentStep;
-                        }
-                        else
-                        {
-                            Console.WriteLine($"Error parsing step value: '{stepString}'");
-                        }
-                    }
-                }
-            }
-
-            if (!string.IsNullOrEmpty(e.Log) && e.Log.Contains("Started new epoch:"))
-            {
-                string[] epochParts = e.Log.Split(new string[] { "Started new epoch:" }, StringSplitOptions.None);
-                if (epochParts.Length > 1)
-                {
-                    string epochString = epochParts[1].Trim();
-                    if (int.TryParse(epochString, out int currentEpoch))
-                    {
-                        InterfaceControl.CurrentEpoch = currentEpoch;
-                    }
-                    else
-                    {
-                        Console.WriteLine($"Error parsing epoch value: '{epochString}'");
-                    }
-                }
-            }
-
-            InterfaceControl.ProgressValueTrain = TrainConfiguration.Epochs == 0 ? 0 : (InterfaceControl.CurrentEpoch / TrainConfiguration.Epochs) * 100;
-
             outputText += $"{e.Log}\n";
+
+            var processInfo = ProcessManager.GetProcessInfo(processId.Value);
+            if (processInfo != null)
+            {
+                InterfaceControl.CurrentStep = processInfo.CurrentStep;
+                InterfaceControl.StepsPerEpoch = processInfo.StepsPerEpoch;
+                InterfaceControl.CurrentEpoch = processInfo.CurrentEpoch;
+                InterfaceControl.TotalSteps = processInfo.TotalSteps;
+
+                InterfaceControl.ProgressValueTrain = TrainConfiguration.Epochs == 0 ? 0 : (InterfaceControl.CurrentEpoch / TrainConfiguration.Epochs) * 100;
+            }
+
+            logOutputRef?.InputReference?.ForceUpdate();
             InvokeAsync(StateHasChanged);
         }
 
@@ -259,6 +195,11 @@
             if (processInfo != null)
             {
                 outputText = string.Join("\n", processInfo.Logs);
+
+                InterfaceControl.CurrentStep = processInfo.CurrentStep;
+                InterfaceControl.StepsPerEpoch = processInfo.StepsPerEpoch;
+                InterfaceControl.CurrentEpoch = processInfo.CurrentEpoch;
+                InterfaceControl.TotalSteps = processInfo.TotalSteps;
 
                 if (!processInfo.IsRunning)
                 {
@@ -354,7 +295,7 @@
                     command = Regex.Replace(command, pattern, $"--num_gpus={numGpusInt}");
                 }
 
-                if(TrainConfiguration.ResumeFromCheckpoint)
+                if (TrainConfiguration.ResumeFromCheckpoint)
                 {
                     if (!string.IsNullOrEmpty(TrainConfiguration.ResumeFromSpecificCheckpoint))
                     {

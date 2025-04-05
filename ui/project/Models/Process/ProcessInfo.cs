@@ -12,5 +12,10 @@ namespace DiffusionPipeInterface.Models.Process
         public bool IsRunning { get; set; }
         public int? ExitCode { get; set; }
         public System.Diagnostics.Process Process { get; set; }
+
+        public int CurrentStep { get; set; }
+        public int StepsPerEpoch { get; set; }
+        public int CurrentEpoch { get; set; }
+        public int TotalSteps { get; set; }
     }
 }
