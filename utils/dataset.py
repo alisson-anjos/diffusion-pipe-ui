@@ -177,9 +177,11 @@ class ConcatenatedBatchedDataset:
         self.datasets = datasets
         self.post_init_called = False
 
-    def post_init(self, batch_size):
+    def post_init(self, batch_size, batch_size_image):
         iteration_order = []
+        size_bucket = self.datasets[0].size_bucket
         for i, ds in enumerate(self.datasets):
+            assert ds.size_bucket == size_bucket
             iteration_order.extend([i]*len(ds))
         shuffle_with_seed(iteration_order, 0)
         cumulative_sums = [0] * len(self.datasets)
@@ -187,7 +189,7 @@ class ConcatenatedBatchedDataset:
             iteration_order[k] = (dataset_idx, cumulative_sums[dataset_idx])
             cumulative_sums[dataset_idx] += 1
         self.iteration_order = iteration_order
-        self.batch_size = batch_size
+        self.batch_size = batch_size_image if size_bucket[-1] == 1 else batch_size
         self._make_divisible_by(self.batch_size)
         self.post_init_called = True
 
@@ -590,11 +592,13 @@ class Dataset:
             )
             self.directory_datasets.append(directory_dataset)
 
-    def post_init(self, data_parallel_rank, data_parallel_world_size, per_device_batch_size, gradient_accumulation_steps):
+    def post_init(self, data_parallel_rank, data_parallel_world_size, per_device_batch_size, gradient_accumulation_steps, per_device_batch_size_image):
         self.data_parallel_rank = data_parallel_rank
         self.data_parallel_world_size = data_parallel_world_size
         self.batch_size = per_device_batch_size * gradient_accumulation_steps
+        self.batch_size_image = per_device_batch_size_image * gradient_accumulation_steps
         self.global_batch_size = self.data_parallel_world_size * self.batch_size
+        self.global_batch_size_image = self.data_parallel_world_size * self.batch_size_image
 
         # group same size_bucket together
         datasets_by_size_bucket = defaultdict(list)
@@ -606,7 +610,7 @@ class Dataset:
             self.buckets.append(ConcatenatedBatchedDataset(datasets))
 
         for bucket in self.buckets:
-            bucket.post_init(self.global_batch_size)
+            bucket.post_init(self.global_batch_size, self.global_batch_size_image)
 
         iteration_order = []
         for i, bucket in enumerate(self.buckets):

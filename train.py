@@ -1,5 +1,6 @@
 import argparse
 import os
+import wandb
 from datetime import datetime, timezone
 import shutil
 import glob
@@ -8,6 +9,7 @@ import random
 import json
 import inspect
 from pathlib import Path
+from collections import defaultdict
 
 import toml
 import deepspeed
@@ -31,6 +33,8 @@ import wandb
 from utils.unsloth_utils import unsloth_checkpoint
 from utils.pipeline import ManualPipelineModule
 
+wandb_enable = False
+
 TIMESTEP_QUANTILES_FOR_EVAL = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
 parser = argparse.ArgumentParser()
@@ -46,6 +50,24 @@ parser.add_argument('--master_port', type=int, default=29500, help='Master port 
 parser.add_argument('--dump_dataset', type=Path, default=None, help='Decode cached latents and dump the dataset to this directory.')
 parser = deepspeed.add_config_arguments(parser)
 args = parser.parse_args()
+
+
+class DummyOptimizer(torch.optim.Optimizer):
+    def __init__(self):
+        self.state = defaultdict(dict)
+        self.param_groups = []
+
+    def step(self, closure=None):
+        pass
+
+    def zero_grad(self, set_to_none: bool = True):
+        pass
+
+    def state_dict(self):
+        return {}
+
+    def load_state_dict(self, state_dict):
+        pass
 
 
 # Monkeypatch this so it counts all layer parameters, not just trainable parameters.
@@ -76,8 +98,8 @@ def set_config_defaults(config):
     model_config = config['model']
     model_dtype_str = model_config['dtype']
     model_config['dtype'] = DTYPE_MAP[model_dtype_str]
-    if 'transformer_dtype' in model_config:
-        model_config['transformer_dtype'] = DTYPE_MAP[model_config['transformer_dtype']]
+    if transformer_dtype := model_config.get('transformer_dtype', None):
+        model_config['transformer_dtype'] = DTYPE_MAP.get(transformer_dtype, transformer_dtype)
     model_config.setdefault('guidance', 1.0)
 
     if 'adapter' in config:
@@ -279,6 +301,9 @@ if __name__ == '__main__':
     elif model_type == 'chroma':
         from models import chroma
         model = chroma.ChromaPipeline(config)
+    elif model_type == 'hidream':
+        from models import hidream
+        model = hidream.HiDreamPipeline(config)
     else:
         raise NotImplementedError(f'Model type {model_type} is not implemented')
 
@@ -381,6 +406,7 @@ if __name__ == '__main__':
                     1,
                     1,
                     1,
+                    1,
                 )
                 for i, item in enumerate(train_data):
                     latents = item['latents']
@@ -421,9 +447,9 @@ if __name__ == '__main__':
         run_dir = os.path.join(config['output_dir'], datetime.now(timezone.utc).strftime('%Y%m%d_%H-%M-%S'))
         os.makedirs(run_dir, exist_ok=True)
         shutil.copy(args.config, run_dir)
-        dataset_config_path = Path(args.config).parent / "dataset_config.toml"
-        if os.path.exists(dataset_config_path) and os.path.isfile(dataset_config_path):
-            shutil.copy(dataset_config_path, run_dir)
+        shutil.copy(config['dataset'], run_dir)
+        for eval_dataset in config['eval_datasets']:
+            shutil.copy(eval_dataset['config'], run_dir)
     # wait for all processes then get the most recent dir (may have just been created)
     dist.barrier()
     if resume_from_checkpoint is True:  # No specific folder provided, use most recent
@@ -434,6 +460,21 @@ if __name__ == '__main__':
             raise ValueError(f"Checkpoint directory {run_dir} does not exist")
     else:  # Not resuming, use most recent (newly created) dir
         run_dir = get_most_recent_run_dir(config['output_dir'])
+
+    # WandB logging
+    wandb_enable = config.get('monitoring', {}).get('enable_wandb', False)
+    if wandb_enable:
+        wandb_api_key     = config['monitoring']['wandb_api_key']
+        wandb_tracker     = config['monitoring']['wandb_tracker_name']
+        wandb_run_name    = config['monitoring']['wandb_run_name']
+        logging_dir       = run_dir
+        wandb.login(key=wandb_api_key)
+        wandb.init(
+            project=wandb_tracker,
+            name=wandb_run_name,
+            config=config,
+            dir=logging_dir
+        )
 
     # Block swapping
     if blocks_to_swap := config.get('blocks_to_swap', 0):
@@ -479,6 +520,9 @@ if __name__ == '__main__':
     parameters_to_train = [p for p in pipeline_model.parameters() if p.requires_grad]
 
     def get_optimizer(model_parameters):
+        if len(model_parameters) == 0:
+            return DummyOptimizer()
+
         optim_config = config['optimizer']
         optim_type = optim_config['type']
         optim_type_lower = optim_type.lower()
@@ -600,6 +644,7 @@ if __name__ == '__main__':
         model_engine.grid.get_data_parallel_world_size(),
         model_engine.train_micro_batch_size_per_gpu(),
         model_engine.gradient_accumulation_steps(),
+        config.get('image_micro_batch_size_per_gpu', model_engine.train_micro_batch_size_per_gpu()),
     )
     for eval_data in eval_data_map.values():
         eval_data.post_init(
@@ -607,6 +652,7 @@ if __name__ == '__main__':
             model_engine.grid.get_data_parallel_world_size(),
             config.get('eval_micro_batch_size_per_gpu', model_engine.train_micro_batch_size_per_gpu()),
             config['eval_gradient_accumulation_steps'],
+            config.get('image_eval_micro_batch_size_per_gpu', config.get('eval_micro_batch_size_per_gpu', model_engine.train_micro_batch_size_per_gpu())),
         )
 
     # Might be useful because we set things in fp16 / bf16 without explicitly enabling Deepspeed fp16 mode.
@@ -676,6 +722,8 @@ if __name__ == '__main__':
 
         if is_main_process() and step % config['logging_steps'] == 0:
             tb_writer.add_scalar(f'train/loss', loss, step)
+            if wandb_enable:
+                wandb.log({'train/loss': loss, 'step': step})
             if optimizer.__class__.__name__ == 'Prodigy':
                 prodigy_d = get_prodigy_d(optimizer)
                 tb_writer.add_scalar(f'train/prodigy_d', prodigy_d, step)

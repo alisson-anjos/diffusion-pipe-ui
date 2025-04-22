@@ -13,3 +13,6 @@
 [submodule "submodules/flow"]
 	path = submodules/flow
 	url = https://github.com/lodestone-rock/flow
+[submodule "submodules/HiDream"]
+	path = submodules/HiDream
+	url = https://github.com/HiDream-ai/HiDream-I1

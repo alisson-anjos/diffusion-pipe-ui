@@ -65,6 +65,7 @@ class PreprocessMediaFile:
         self.pil_to_tensor = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.5], [0.5])])
         self.support_video = support_video
         self.framerate = framerate
+        print(f'using framerate={self.framerate}')
         self.round_height = round_height
         self.round_width = round_width
         self.round_frames = round_frames

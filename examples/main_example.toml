@@ -14,6 +14,8 @@ dataset = 'examples/dataset.toml'
 epochs = 1000
 # Batch size of a single forward/backward pass for one GPU.
 micro_batch_size_per_gpu = 1
+# For mixed video / image training, you can have a different batch size for images.
+#image_micro_batch_size_per_gpu = 4
 # Pipeline parallelism degree. A single instance of the model is divided across this many GPUs.
 pipeline_stages = 1
 # Number of micro-batches sent through the pipeline for each training step.
@@ -38,6 +40,8 @@ eval_before_first_step = true
 # Each size bucket of images/videos is rounded down to the nearest multiple of the global batch size, so higher global batch size means
 # more dropped images. Usually doesn't matter for training but the eval set is much smaller so it can matter.
 eval_micro_batch_size_per_gpu = 1
+# Batch size for images when doing mixed image / video training. Will be micro_batch_size_per_gpu if not set.
+#image_eval_micro_batch_size_per_gpu = 4
 eval_gradient_accumulation_steps = 1
 # If using block swap, you can disable it for eval. Eval uses less memory, so depending on block swapping amount you can maybe get away with
 # doing this, and then eval is much faster.
@@ -129,3 +133,10 @@ eps = 1e-8
 # lr = 1
 # betas = [0.9, 0.99]
 # weight_decay = 0.01
+
+[monitoring]
+# Set to true and fill in these fields to enable wandb
+enable_wandb = false
+wandb_api_key = ''
+wandb_tracker_name = ''
+wandb_run_name = ''

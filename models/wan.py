@@ -3,6 +3,7 @@ import json
 import math
 import re
 import os.path
+from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.abspath(os.path.dirname(__file__)), '../submodules/Wan2_1'))
 
 import torch
@@ -377,21 +378,47 @@ class WanPipeline(BasePipeline):
         ckpt_dir = self.model_config['ckpt_path']
         dtype = self.model_config['dtype']
 
+        # SkyReels V2 uses 24 FPS. There seems to be no better way to autodetect this.
+        if 'skyreels' in Path(ckpt_dir).name.lower():
+            skyreels = True
+            self.framerate = 24
+            # FPS is different so make sure to use a new cache dir
+            self.name = 'skyreels_v2'
+        else:
+            skyreels = False
+
         self.original_model_config_path = os.path.join(ckpt_dir, 'config.json')
         with open(self.original_model_config_path) as f:
             json_config = json.load(f)
         self.i2v = (json_config['model_type'] == 'i2v')
+        self.flf2v = (json_config['model_type'] == 'flf2v')
         if self.i2v:
-            self.name = 'wan_i2v'
+            if skyreels:
+                self.name = 'skyreels_v2_i2v'
+            else:
+                self.name = 'wan_i2v'
+        if self.flf2v:
+            assert not skyreels
+            self.name = 'wan_flf2v'
         model_dim = json_config['dim']
         if not self.i2v and model_dim == 1536:
             wan_config = wan_configs.t2v_1_3B
+        elif self.i2v and model_dim == 1536: # There is no official i2v 1.3b model, but there is https://huggingface.co/alibaba-pai/Wan2.1-Fun-1.3B-InP
+            # This is a hack,
+            wan_config = wan_configs.t2v_1_3B
+            # The following lines are taken from https://github.com/Wan-Video/Wan2.1/blob/main/wan/configs/wan_i2v_14B.py
+            wan_config.clip_model = 'clip_xlm_roberta_vit_h_14'
+            wan_config.clip_dtype = torch.float16
+            wan_config.clip_checkpoint = 'models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth'
+            wan_config.clip_tokenizer = 'xlm-roberta-large'
         elif self.i2v and model_dim == 5120:
             wan_config = wan_configs.i2v_14B
+        elif self.flf2v and model_dim == 5120:
+            wan_config = wan_configs.flf2v_14B
         elif not self.i2v and model_dim == 5120:
             wan_config = wan_configs.t2v_14B
         else:
-            raise RuntimeError(f'Could not autodetect model variant. model_dim={model_dim}, i2v={self.i2v}')
+            raise RuntimeError(f'Could not autodetect model variant. model_dim={model_dim}, i2v={self.i2v}, flf2v={self.flf2v}')
 
         # This is the outermost class, which isn't a nn.Module
         t5_model_path = self.model_config['llm_path'] if self.model_config.get('llm_path', None) else os.path.join(ckpt_dir, wan_config.t5_checkpoint)
@@ -415,7 +442,7 @@ class WanPipeline(BasePipeline):
         self.vae.std = self.vae.std.to('cuda')
         self.vae.scale = [self.vae.mean, 1.0 / self.vae.std]
 
-        if self.i2v:
+        if self.i2v or self.flf2v:
             self.clip = CLIPModel(
                 dtype=dtype,
                 device='cpu',
@@ -436,10 +463,17 @@ class WanPipeline(BasePipeline):
                 transformer_dtype=transformer_dtype,
             )
         else:
-            self.transformer = WanModel.from_pretrained(self.model_config['ckpt_path'], torch_dtype=dtype)
-            for name, p in self.transformer.named_parameters():
-                if not (any(x in name for x in KEEP_IN_HIGH_PRECISION)):
-                    p.data = p.data.to(transformer_dtype)
+            ckpt_path = Path(self.model_config['ckpt_path'])
+            with init_empty_weights():
+                self.transformer = WanModel.from_config(ckpt_path / 'config.json')
+            state_dict = {}
+            for shard in ckpt_path.glob('*.safetensors'):
+                with safetensors.safe_open(shard, framework="pt", device="cpu") as f:
+                    for key in f.keys():
+                        state_dict[key] = f.get_tensor(key)
+            for name, param in self.transformer.named_parameters():
+                dtype_to_use = dtype if any(keyword in name for keyword in KEEP_IN_HIGH_PRECISION) else transformer_dtype
+                set_module_tensor_to_device(self.transformer, name, device='cpu', dtype=dtype_to_use, value=state_dict[name])
 
         self.transformer.train()
         # We'll need the original parameter name for saving, and the name changes once we wrap modules for pipeline parallelism,
@@ -452,7 +486,7 @@ class WanPipeline(BasePipeline):
 
     def get_vae(self):
         vae = self.vae.model
-        clip = self.clip.model if self.i2v else None
+        clip = self.clip.model if self.i2v or self.flf2v else None
         return VaeAndClip(vae, clip)
 
     def get_text_encoders(self):
@@ -487,15 +521,22 @@ class WanPipeline(BasePipeline):
             ret = {'latents': latents}
             clip = vae_and_clip.clip
             if clip is not None:
-                assert tensor.ndim == 5, f'i2v must train on videos, got tensor with shape {tensor.shape}'
+                assert tensor.ndim == 5, f'i2v/flf2v must train on videos, got tensor with shape {tensor.shape}'
                 first_frame = tensor[:, :, 0:1, ...].clone()
+                clip_context = self.clip.visual(first_frame.to(p.device, p.dtype))
                 tensor[:, :, 1:, ...] = 0
+
+                if self.flf2v:
+                    last_frame = tensor[:, :, -2:-1, ...].clone()
+                    # NOTE: dim=1 is a hack to pass clip_context without microbatching breaking the zeroth dim
+                    clip_context = torch.cat([clip_context, self.clip.visual(last_frame.to(p.device, p.dtype))], dim=1)
+                    tensor[:, :, :-2, ...] = 0
+
                 # Image conditioning. Same shame as latents, first frame is unchanged, rest is 0.
                 # NOTE: encoding 0s with the VAE doesn't give you 0s in the latents, I tested this. So we need to
                 # encode the whole thing here, we can't just extract the first frame from the latents later and make
                 # the rest 0. But what happens if you do that? Probably things get fried, but might be worth testing.
                 y = vae_encode(tensor, self.vae)
-                clip_context = self.clip.visual(first_frame.to(p.device, p.dtype))
                 ret['y'] = y
                 ret['clip_context'] = clip_context
             return ret
@@ -520,8 +561,8 @@ class WanPipeline(BasePipeline):
         text_embeddings = inputs['text_embeddings']
         seq_lens = inputs['seq_lens']
         mask = inputs['mask']
-        y = inputs['y'] if self.i2v else None
-        clip_context = inputs['clip_context'] if self.i2v else None
+        y = inputs['y'] if self.i2v or self.flf2v else None
+        clip_context = inputs['clip_context'] if self.i2v or self.flf2v else None
 
         bs, channels, num_frames, h, w = latents.shape
 
@@ -610,7 +651,8 @@ class InitialLayer(nn.Module):
         self.text_embedding = model.text_embedding
         self.time_projection = model.time_projection
         self.i2v = (model.model_type == 'i2v')
-        if self.i2v:
+        self.flf2v = (model.model_type == 'flf2v')
+        if self.i2v or self.flf2v:
             self.img_emb = model.img_emb
         self.model = [model]
 
@@ -633,9 +675,11 @@ class InitialLayer(nn.Module):
         if self.freqs.device != device:
             self.freqs = self.freqs.to(device)
 
-        if self.i2v:
+        if self.i2v or self.flf2v:
             mask = torch.zeros((bs, 4, f, h, w), device=x.device, dtype=x.dtype)
             mask[:, :, 0, ...] = 1
+            if self.flf2v:
+                mask[:, :, -1, ...] = 1
             y = torch.cat([mask, y], dim=1)
             x = [torch.cat([u, v], dim=0) for u, v in zip(x, y)]
 
@@ -664,9 +708,12 @@ class InitialLayer(nn.Module):
                 for u in context
             ]))
 
-        if self.i2v:
+        if self.i2v or self.flf2v:
             assert clip_fea is not None
-            context_clip = self.img_emb(clip_fea)  # bs x 257 x dim
+            if self.flf2v:
+                self.img_emb.emb_pos.data = self.img_emb.emb_pos.data.to(clip_fea.device, torch.float32)
+                clip_fea = clip_fea.view(-1, 257, 1280)
+            context_clip = self.img_emb(clip_fea)  # bs x 257 (x2) x dim
             context = torch.concat([context_clip, context], dim=1)
 
         # pipeline parallelism needs everything on the GPU
