@@ -15,7 +15,7 @@ namespace DiffusionPipeInterface.Utils
 {
     public static class Extensions
     {
-       public static string GetDescription(this Enum enumValue)
+        public static string GetDescription(this Enum enumValue)
         {
             var field = enumValue.GetType().GetField(enumValue.ToString());
             if (field == null)
@@ -479,6 +479,21 @@ namespace DiffusionPipeInterface.Utils
                                 modelTable.Add("transformer_path", chromaConfig.TransformerPath!);
                                 modelTable.Add("transformer_dtype", chromaConfig.TransformerDType!.GetDescription());
                                 modelTable.Add("flux_shift", chromaConfig.FluxShift!);
+                            }
+                            break;
+                        case Enums.ModelType.HiDream:
+                            var hiDreamConfig = (HiDreamModelConfigurationViewModel)currentModelConfiguration;
+                            if (hiDreamConfig != null)
+                            {
+                                modelTable.Add("diffusers_path", hiDreamConfig.DiffusersPath!);
+                                modelTable.Add("llama3_path", hiDreamConfig.Llama3Path);
+                                modelTable.Add("llama3_4bit", hiDreamConfig.Llama34bit);
+                                modelTable.Add("transformer_dtype", hiDreamConfig.TransformerDType!.GetDescription());
+                                modelTable.Add("max_llama3_sequence_length", hiDreamConfig.MaxLlama3SequenceLength);
+                                if (hiDreamConfig.FluxShift != null)
+                                {
+                                    modelTable.Add("flux_shift", hiDreamConfig.FluxShift);
+                                }
                             }
                             break;
                     }

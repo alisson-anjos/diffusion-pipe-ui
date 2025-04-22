@@ -30,5 +30,6 @@ namespace DiffusionPipeInterface.Models
         public LuminaModelConfigurationViewModel Lumina { get; set; } = new();
         public WanModelConfigurationViewModel Wan21 { get; set; } = new();
         public HunyuanModelConfigurationViewModel Hunyuan { get; set; } = new();
+        public HiDreamModelConfigurationViewModel HiDream { get; set; } = new();
     }
 }

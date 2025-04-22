@@ -1,0 +1,70 @@
+﻿@using DiffusionPipeInterface.Models
+@using DiffusionPipeInterface.Utils
+@using DiffusionPipeInterface.ViewModels.Models
+@using Enums
+@using Microsoft.Extensions.Options
+@inject IDialogService DialogService
+@inject IJSRuntime JSRuntime
+@inject IConfiguration Configuration
+@inject IOptionsMonitor<AppSettingsConfiguration> AppSettingsConfiguration
+
+<MudTextField @bind-Value="ModelConfiguration.DiffusersPath" Required Label="Diffusers Path" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Link" OnAdornmentClick=@(() => RedirectToLink("https://huggingface.co/HiDream-ai/HiDream-I1-Full/tree/main"))></MudTextField>
+
+<MudTextField @bind-Value="ModelConfiguration.Llama3Path" Required Label="Llama 3 Path" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Link" OnAdornmentClick=@(() => RedirectToLink("https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct/tree/main"))></MudTextField>
+
+<MudSwitch @bind-Value="ModelConfiguration.Llama34bit" Color="Color.Primary" Disabled="Locked" Label="Llama 3 4bit"  />
+
+<MudSelect T="Dtype" @bind-Value="ModelConfiguration.Dtype" Required Label="Dtype" FullWidth="true" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.ModelDtype))>
+    @foreach (Dtype item in Enum.GetValues(typeof(Dtype)))
+    {
+        <MudSelectItem Value="@item">@item</MudSelectItem>
+    }
+</MudSelect>
+
+<MudSelect T="Dtype?" @bind-Value="ModelConfiguration.TransformerDType" Required Label="Transformer Dtype" FullWidth="true" Disabled="Locked" Variant="Variant.Outlined" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Info" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.TransformerDtype))>
+    @foreach (Dtype? item in Enum.GetValues(typeof(Dtype)))
+    {
+        <MudSelectItem Value="@item">@item</MudSelectItem>
+    }
+</MudSelect>
+
+<MudSwitch @bind-Value="ModelConfiguration.FluxShift" Color="Color.Primary" Disabled="Locked" Label="Enable Flux Shift" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Link" OnAdornmentClick=@(() => OpenDialogAsync(Tooltips.FluxShift)) />
+
+@code {
+    [Parameter]
+    [EditorRequired]
+    public HiDreamModelConfigurationViewModel ModelConfiguration { get; set; } = null!;
+
+    [Parameter]
+    public bool Locked { get; set; } = false;
+
+    private AppSettingsConfiguration configuration = null!;
+
+    protected override void OnInitialized()
+    {
+        configuration = AppSettingsConfiguration.CurrentValue;
+
+        if (ModelConfiguration != null && configuration.Models?.HiDream != null)
+        {
+            ModelConfiguration.DiffusersPath = string.IsNullOrEmpty(ModelConfiguration.DiffusersPath) ? configuration.Models.HiDream.DiffusersPath?.Replace("{ModelsPath}", configuration.ModelsPath) : ModelConfiguration.DiffusersPath;
+            ModelConfiguration.Llama3Path = string.IsNullOrEmpty(ModelConfiguration.Llama3Path) ? configuration.Models.HiDream.Llama3Path.Replace("{ModelsPath}", configuration.ModelsPath) : ModelConfiguration.Llama3Path;
+        }
+    }
+
+    private Task OpenDialogAsync(string message)
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large };
+
+        var parameters = new DialogParameters<InfoDialog>
+        {
+            { x => x.Message, message }
+        };
+
+        return DialogService.ShowAsync<InfoDialog>("Info", parameters, options);
+    }
+
+    private void RedirectToLink(string link)
+    {
+        JSRuntime.InvokeVoidAsync("openNewTab", link);
+    }
+}

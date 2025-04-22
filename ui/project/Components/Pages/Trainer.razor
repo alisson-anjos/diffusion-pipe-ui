@@ -55,6 +55,22 @@
                         <ExtraParametersConfiguration Locked="InterfaceControl.TrainingLocked" TrainConfiguration="TrainConfiguration"></ExtraParametersConfiguration>
                     </MudItem>
                     <MudItem xs="12">
+                        <MudExpansionPanels>
+                            <MudExpansionPanel @bind-Expanded="@overrideConfigsPanel" HideIcon="true">
+                                <TitleContent>
+                                    <div class="d-flex">
+                                        <MudText>Override configs manually</MudText>
+                                        <MudIcon Icon="@(overrideConfigsPanel ? Icons.Material.Filled.Close : Icons.Material.Filled.Add)" class="ml-auto"></MudIcon>
+                                    </div>
+                                </TitleContent>
+                                <ChildContent>
+                                    <MudTextField T="string" @ref=databaseConfigOverrideRef Label="Database Config" Typo="Typo.body2" Variant="Variant.Outlined" Lines="20" MaxLines="Int32.MaxValue" />
+                                    <MudTextField T="string" @ref=trainingConfigOverrideRef Label="Training Config" Typo="Typo.body2" Variant="Variant.Outlined" Lines="20" MaxLines="Int32.MaxValue" />
+                                </ChildContent>
+                            </MudExpansionPanel>
+                        </MudExpansionPanels>
+                    </MudItem>
+                    <MudItem xs="12">
                         <MudCard>
                             <MudCardHeader>
                                 <CardHeaderContent>
@@ -100,13 +116,16 @@
     <MudFab Color="Color.Tertiary" StartIcon="@Icons.Material.Filled.ArrowCircleUp" />
 </MudScrollToTop>
 @code {
-    #nullable enable
+#nullable enable
     private bool isUploading = false;
     private string outputText { get; set; } = string.Empty;
     private bool isTraining { get; set; } = false;
     private Guid? processId;
     private bool isInitialized = false;
     private MudTextField<string> logOutputRef;
+    private MudTextField<string> databaseConfigOverrideRef;
+    private MudTextField<string> trainingConfigOverrideRef;
+
     private Components.DatasetDirectoryConfiguration datasetDirectoryConfigurationRef = null!;
     private FileTreeView outputTreeViewRef = null!;
 
@@ -119,6 +138,8 @@
     public TrainConfigurationViewModel TrainConfiguration { get; set; } = new();
 
     private MudForm trainingForm = new();
+
+    private bool overrideConfigsPanel = false;
 
     protected override void OnInitialized()
     {
@@ -242,12 +263,26 @@
 
     private async Task SaveProcessIdToLocalStorageAsync(Guid processId)
     {
-        await JSRuntime.InvokeVoidAsync("localStorage.setItem", "processId", processId.ToString());
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", "processId", processId.ToString());
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error saving process ID to local storage: {ex.Message}");
+        }
     }
 
     private async Task ClearProcessIdFromLocalStorageAsync()
     {
-        await JSRuntime.InvokeVoidAsync("localStorage.removeItem", "processId");
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("localStorage.removeItem", "processId");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error clearing process ID from local storage: {ex.Message}");
+        }
     }
 
     private async Task StartTrainingAsync()

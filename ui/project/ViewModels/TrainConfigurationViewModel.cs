@@ -139,6 +139,9 @@ namespace DiffusionPipeInterface.ViewModels
         [IgnoreDataMember]
         public WanModelConfigurationViewModel WanModelConfiguration { get; set; } = new WanModelConfigurationViewModel();
 
+        [IgnoreDataMember]
+        public HiDreamModelConfigurationViewModel HiDreamModelConfiguration { get; set; } = new HiDreamModelConfigurationViewModel();
+
         public ModelConfigurationViewModel GetCurrentModelConfiguration()
         {
             return ModelConfiguration.Type switch
@@ -151,6 +154,7 @@ namespace DiffusionPipeInterface.ViewModels
                 ModelType.Lumina => LuminaModelConfiguration,
                 ModelType.SDXL => SdxlModelConfiguration,
                 ModelType.Wan21 => WanModelConfiguration,
+                ModelType.HiDream => HiDreamModelConfiguration,
                 _ => ModelConfiguration
             };
         }

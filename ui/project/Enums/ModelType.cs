@@ -20,5 +20,7 @@ namespace DiffusionPipeInterface.Enums
         Wan21,
         [Description("chroma")]
         Chroma,
+        [Description("HiDream")]
+        HiDream
     }
 }

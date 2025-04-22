@@ -33,7 +33,7 @@ namespace DiffusionPipeInterface.ViewModels
 
         [DataMember(Name = "llm_path")] 
         public string? LlmPath { get; set; } = null;
-        
+
         [DataMember(Name = "clip_path")]
         public string? ClipPath { get; set; } = null;
 

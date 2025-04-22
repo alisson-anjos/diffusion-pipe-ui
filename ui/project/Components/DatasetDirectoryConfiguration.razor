@@ -244,17 +244,17 @@
 
     private AppSettingsConfiguration config;
 
-    protected override Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync()
     {
         config = AppSettingsConfiguration.CurrentValue;
 
-        InvokeAsync(NewDataset);
+        await InvokeAsync(NewDataset);
 
         DatasetOption = "Create";
 
         datasets = FileHelper.GetDatasetConfigurations(config.ConfigsPath);
 
-        return base.OnInitializedAsync();
+        await base.OnInitializedAsync();
     }
 
     private async Task Upload(InputFileChangeEventArgs e, DatasetDirectoryConfigurationViewModel item)
